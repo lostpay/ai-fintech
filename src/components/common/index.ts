@@ -1,2 +1,4 @@
 // Common UI components barrel export
-// Export components here when they are created
+export { DashboardHeader } from './DashboardHeader';
+export { LoadingState } from './LoadingState';
+export { EmptyDashboard } from './EmptyDashboard';

@@ -73,9 +73,9 @@ export const AppNavigator: React.FC = () => {
             backgroundColor: '#FFFFFF',
             borderTopColor: '#E0E0E0',
             borderTopWidth: 1,
-            height: Platform.OS === 'ios' ? 88 : 60,
-            paddingBottom: Platform.OS === 'ios' ? 20 : 8,
-            paddingTop: 8,
+            height: Platform.OS === 'ios' ? 100 : 75,
+            paddingBottom: Platform.OS === 'ios' ? 25 : 15,
+            paddingTop: 12,
           },
           tabBarLabelStyle: {
             fontSize: 12,

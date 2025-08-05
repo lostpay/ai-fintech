@@ -56,3 +56,15 @@ export const formatDateForStorage = (date: Date): string => {
 export const parseDateFromStorage = (dateString: string): Date => {
   return new Date(dateString + 'T00:00:00.000Z');
 };
+
+/**
+ * Format month with year for dashboard header
+ * @param date Date object to format
+ * @returns Formatted month string (e.g., "January 2025")
+ */
+export const formatMonth = (date: Date): string => {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+  }).format(date);
+};

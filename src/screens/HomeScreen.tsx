@@ -1,30 +1,112 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Text, Card } from 'react-native-elements';
+import React from 'react';
+import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { FAB } from 'react-native-elements';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/types';
+import { useDashboardStats } from '../hooks/useDashboardStats';
+import { DashboardHeader } from '../components/common/DashboardHeader';
+import { QuickStatsCard } from '../components/lists/QuickStatsCard';
+import { RecentTransactionsList } from '../components/lists/RecentTransactionsList';
+import { LoadingState } from '../components/common/LoadingState';
+import { EmptyDashboard } from '../components/common/EmptyDashboard';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
-  const [loading, setLoading] = useState(false);
+  const {
+    dashboardData,
+    loading,
+    error,
+    refreshing,
+    refreshDashboard
+  } = useDashboardStats();
 
-  useEffect(() => {
-    // Screen initialization placeholder
-  }, []);
+  const handleFABPress = () => {
+    navigation.navigate('Add');
+  };
+
+  const handleViewAllTransactions = () => {
+    navigation.navigate('History');
+  };
+
+  const handleAddExpense = () => {
+    navigation.navigate('Add');
+  };
+
+  // Show loading state while data is being fetched
+  if (loading && !dashboardData) {
+    return <LoadingState message="Loading your dashboard..." />;
+  }
+
+  // Show error state if there's an error and no data
+  if (error && !dashboardData) {
+    return (
+      <View style={styles.errorContainer}>
+        <EmptyDashboard onAddExpense={handleAddExpense} />
+      </View>
+    );
+  }
+
+  // Show empty state if no data
+  if (!dashboardData || (dashboardData.transactionCount === 0 && dashboardData.recentTransactions.length === 0)) {
+    return (
+      <View style={styles.container}>
+        <EmptyDashboard onAddExpense={handleAddExpense} />
+        <FAB
+          style={styles.fab}
+          icon={{ name: 'add', type: 'material', color: 'white' }}
+          color="#1976D2"
+          onPress={handleFABPress}
+          testID="dashboard-fab"
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Card containerStyle={styles.card}>
-        <Text h2 style={styles.title}>Budget Tracker</Text>
-        <Text h4 style={styles.subtitle}>Welcome to Your Personal Budget Tracker</Text>
-        <Text style={styles.description}>
-          Track your expenses, manage budgets, and reach your financial goals.
-        </Text>
-        <Text style={styles.status}>
-          Navigation system ready - Home Screen loaded successfully!
-        </Text>
-      </Card>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshDashboard}
+            colors={['#1976D2']} // Material Design primary color
+            tintColor="#1976D2"
+          />
+        }
+        testID="dashboard-scroll-view"
+      >
+        {/* Dashboard Header */}
+        <DashboardHeader
+          currentMonth={dashboardData.currentMonth}
+          totalSpent={dashboardData.totalSpentThisMonth}
+          loading={loading}
+        />
+
+        {/* Quick Stats Cards */}
+        <QuickStatsCard
+          weeklySpending={dashboardData.weeklySpending}
+          transactionCount={dashboardData.transactionCount}
+          loading={loading}
+        />
+
+        {/* Recent Transactions */}
+        <RecentTransactionsList
+          transactions={dashboardData.recentTransactions}
+          loading={loading}
+          onViewAll={handleViewAllTransactions}
+        />
+      </ScrollView>
+
+      {/* Floating Action Button */}
+      <FAB
+        style={styles.fab}
+        icon={{ name: 'add', type: 'material', color: 'white' }}
+        color="#1976D2"
+        onPress={handleFABPress}
+        testID="dashboard-fab"
+      />
     </View>
   );
 };
@@ -32,35 +114,27 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA', // Material Design background
-    padding: 16,
+    backgroundColor: '#FAFAFA', // Material Design surface background
   },
-  card: {
-    borderRadius: 8,
-    margin: 0,
-    marginTop: 20,
+  scrollContainer: {
+    flexGrow: 1,
+    paddingBottom: 95, // Space for FAB and taller navigation bar
   },
-  title: {
-    textAlign: 'center',
-    color: '#1976D2',
-    marginBottom: 16,
+  errorContainer: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
   },
-  subtitle: {
-    textAlign: 'center',
-    color: '#424242',
-    marginBottom: 16,
-  },
-  description: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#757575',
-    marginBottom: 16,
-    lineHeight: 24,
-  },
-  status: {
-    textAlign: 'center',
-    fontSize: 14,
-    color: '#4CAF50',
-    fontStyle: 'italic',
+  fab: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    elevation: 6, // Material Design FAB elevation
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
 });

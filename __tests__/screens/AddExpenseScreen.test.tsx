@@ -1,13 +1,16 @@
+/**
+ * AddExpenseScreen Test Suite - Story 2.3
+ * Tests for Material Design 3 expense form implementation
+ */
+
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import AddExpenseScreen from '../../src/screens/AddExpenseScreen';
-import { useCategories } from '../../src/hooks/useCategories';
-import { useTransactions } from '../../src/hooks/useTransactions';
+import { DatabaseService } from '../../src/services/DatabaseService';
 
-// Mock the hooks
-jest.mock('../../src/hooks/useCategories');
-jest.mock('../../src/hooks/useTransactions');
+// Mock DatabaseService
+jest.mock('../../src/services/DatabaseService');
 
 // Mock navigation
 const mockGoBack = jest.fn();
@@ -23,33 +26,28 @@ jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: any) => children,
 }));
 
-// Mock TransactionForm component
-jest.mock('../../src/components/forms/TransactionForm', () => {
-  return jest.fn(({ onSubmit }: any) => {
-    const { View, Text, Button } = require('react-native');
+// Mock DateTimePicker
+jest.mock('@react-native-community/datetimepicker', () => {
+  return jest.fn(({ onChange, value }: any) => {
+    const { View, Text, TouchableOpacity } = require('react-native');
     return (
-      <View testID="transaction-form">
-        <Text>Mock Transaction Form</Text>
-        <Button
-          title="Test Success"
-          onPress={() => onSubmit(true)}
-          testID="mock-success-button"
-        />
-        <Button
-          title="Test Failure"
-          onPress={() => onSubmit(false)}
-          testID="mock-failure-button"
-        />
+      <View testID="date-time-picker">
+        <Text>Mock Date Picker</Text>
+        <TouchableOpacity
+          onPress={() => onChange({}, value)}
+          testID="mock-date-select"
+        >
+          <Text>Select Date</Text>
+        </TouchableOpacity>
       </View>
     );
   });
 });
 
-const mockUseCategories = useCategories as jest.MockedFunction<typeof useCategories>;
-const mockUseTransactions = useTransactions as jest.MockedFunction<typeof useTransactions>;
+const MockedDatabaseService = DatabaseService as jest.MockedClass<typeof DatabaseService>;
 
 const mockCategories = [
-  { id: 1, name: 'Food', color: '#FF9800', icon: 'restaurant', is_default: true, created_at: new Date() },
+  { id: 1, name: 'Dining', color: '#FF9800', icon: 'restaurant', is_default: true, created_at: new Date() },
   { id: 2, name: 'Transport', color: '#2196F3', icon: 'directions-car', is_default: true, created_at: new Date() },
 ];
 
@@ -60,29 +58,18 @@ const NavigationWrapper: React.FC<{ children: React.ReactNode }> = ({ children }
   </NavigationContainer>
 );
 
-describe('AddExpenseScreen', () => {
+describe('AddExpenseScreen - Material Design 3', () => {
+  let mockDatabaseService: jest.Mocked<DatabaseService>;
+
   beforeEach(() => {
     jest.clearAllMocks();
     
-    mockUseCategories.mockReturnValue({
-      categories: mockCategories,
-      loading: false,
-      error: null,
-      refreshCategories: jest.fn(),
-      addCategory: jest.fn(),
-    });
-
-    mockUseTransactions.mockReturnValue({
-      transactions: [],
-      loading: false,
-      error: null,
-      refreshTransactions: jest.fn(),
-      addTransaction: jest.fn(),
-      updateTransaction: jest.fn(),
-      deleteTransaction: jest.fn(),
-      getTransactionsByFilter: jest.fn(),
-      getTransactionsWithCategories: jest.fn(),
-    });
+    // Create mock database service instance
+    mockDatabaseService = new MockedDatabaseService() as jest.Mocked<DatabaseService>;
+    mockDatabaseService.initialize.mockResolvedValue();
+    mockDatabaseService.getCategories.mockResolvedValue(mockCategories);
+    mockDatabaseService.createTransaction.mockResolvedValue({ id: 1 } as any);
+    mockDatabaseService.close.mockResolvedValue();
   });
 
   it('renders the screen with header and form', () => {
