@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../types/Transaction';
+import { Transaction, CreateTransactionRequest, UpdateTransactionRequest, TransactionWithCategory } from '../types/Transaction';
 import { Category, CreateCategoryRequest } from '../types/Category';
 import { Budget, CreateBudgetRequest } from '../types/Budget';
 import { Goal, CreateGoalRequest } from '../types/Goal';
@@ -399,6 +399,80 @@ export class DatabaseService {
       return transactions.map(this.formatTransactionDates);
     } catch (error) {
       console.error('Failed to get transactions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all transactions with category information for display purposes
+   */
+  async getTransactionsWithCategories(
+    categoryId?: number, 
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TransactionWithCategory[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      let query = `
+        SELECT 
+          t.id,
+          t.amount,
+          t.description,
+          t.category_id,
+          t.transaction_type,
+          t.date,
+          t.created_at,
+          t.updated_at,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      
+      if (categoryId) {
+        query += ' AND t.category_id = ?';
+        params.push(categoryId);
+      }
+      
+      if (transactionType) {
+        query += ' AND t.transaction_type = ?';
+        params.push(transactionType);
+      }
+      
+      if (startDate) {
+        query += ' AND t.date >= ?';
+        params.push(startDate.toISOString().split('T')[0]);
+      }
+      
+      if (endDate) {
+        query += ' AND t.date <= ?';
+        params.push(endDate.toISOString().split('T')[0]);
+      }
+      
+      query += ' ORDER BY t.date DESC, t.created_at DESC';
+      
+      const results = await this.db.getAllAsync<any>(query, params);
+      
+      return results.map(row => ({
+        id: row.id,
+        amount: row.amount,
+        description: row.description,
+        category_id: row.category_id,
+        transaction_type: row.transaction_type,
+        date: new Date(row.date),
+        created_at: new Date(row.created_at),
+        updated_at: new Date(row.updated_at),
+        category_name: row.category_name,
+        category_color: row.category_color,
+        category_icon: row.category_icon,
+      })) as TransactionWithCategory[];
+    } catch (error) {
+      console.error('Failed to get transactions with categories:', error);
       throw error;
     }
   }

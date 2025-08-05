@@ -24,3 +24,9 @@ export interface UpdateTransactionRequest {
   transaction_type?: 'expense' | 'income';
   date?: Date;
 }
+
+export interface TransactionWithCategory extends Transaction {
+  category_name: string;
+  category_color: string;
+  category_icon: string;
+}

@@ -81,6 +81,7 @@ describe('AddExpenseScreen', () => {
       updateTransaction: jest.fn(),
       deleteTransaction: jest.fn(),
       getTransactionsByFilter: jest.fn(),
+      getTransactionsWithCategories: jest.fn(),
     });
   });
 
@@ -195,7 +196,7 @@ describe('AddExpenseScreen', () => {
   });
 
   it('displays form within a card container', () => {
-    const { getByText } = render(
+    const { getByText, getByTestId } = render(
       <NavigationWrapper>
         <AddExpenseScreen />
       </NavigationWrapper>

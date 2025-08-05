@@ -67,6 +67,7 @@ describe('TransactionForm', () => {
       updateTransaction: jest.fn(),
       deleteTransaction: jest.fn(),
       getTransactionsByFilter: jest.fn(),
+      getTransactionsWithCategories: jest.fn(),
     });
   });
 

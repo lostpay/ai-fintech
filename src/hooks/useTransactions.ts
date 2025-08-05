@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../types/Transaction';
+import { Transaction, CreateTransactionRequest, UpdateTransactionRequest, TransactionWithCategory } from '../types/Transaction';
 import { databaseService } from '../services';
 
 interface UseTransactionsReturn {
@@ -16,6 +16,12 @@ interface UseTransactionsReturn {
     startDate?: Date,
     endDate?: Date
   ) => Promise<Transaction[]>;
+  getTransactionsWithCategories: (
+    categoryId?: number,
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date
+  ) => Promise<TransactionWithCategory[]>;
 }
 
 export const useTransactions = (): UseTransactionsReturn => {
@@ -138,6 +144,34 @@ export const useTransactions = (): UseTransactionsReturn => {
     }
   }, []);
 
+  const getTransactionsWithCategories = useCallback(async (
+    categoryId?: number,
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TransactionWithCategory[]> => {
+    try {
+      setError(null);
+      
+      // Initialize database if not already done
+      await databaseService.initialize();
+      
+      const transactionsWithCategories = await databaseService.getTransactionsWithCategories(
+        categoryId,
+        transactionType,
+        startDate,
+        endDate
+      );
+      
+      return transactionsWithCategories;
+    } catch (err) {
+      console.error('Error loading transactions with categories:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions with categories';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, []);
+
   // Load transactions on mount
   useEffect(() => {
     loadTransactions();
@@ -152,5 +186,6 @@ export const useTransactions = (): UseTransactionsReturn => {
     updateTransaction,
     deleteTransaction,
     getTransactionsByFilter,
+    getTransactionsWithCategories,
   };
 };

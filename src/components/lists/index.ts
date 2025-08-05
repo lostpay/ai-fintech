@@ -1,2 +1,3 @@
 // List components barrel export
-// Export list components here when they are created
+export { TransactionList } from './TransactionList';
+export { TransactionListItem } from './TransactionListItem';
