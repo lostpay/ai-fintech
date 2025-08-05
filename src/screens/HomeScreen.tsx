@@ -9,10 +9,12 @@ import { QuickStatsCard } from '../components/lists/QuickStatsCard';
 import { RecentTransactionsList } from '../components/lists/RecentTransactionsList';
 import { LoadingState } from '../components/common/LoadingState';
 import { EmptyDashboard } from '../components/common/EmptyDashboard';
+import { useTheme } from '../context/ThemeContext';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
+  const { theme } = useTheme();
   const {
     dashboardData,
     loading,
@@ -41,7 +43,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   // Show error state if there's an error and no data
   if (error && !dashboardData) {
     return (
-      <View style={styles.errorContainer}>
+      <View style={[styles.errorContainer, { backgroundColor: theme.colors.background }]}>
         <EmptyDashboard onAddExpense={handleAddExpense} />
       </View>
     );
@@ -50,12 +52,12 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   // Show empty state if no data
   if (!dashboardData || (dashboardData.transactionCount === 0 && dashboardData.recentTransactions.length === 0)) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <EmptyDashboard onAddExpense={handleAddExpense} />
         <FAB
           style={styles.fab}
           icon={{ name: 'add', type: 'material', color: 'white' }}
-          color="#1976D2"
+          color={theme.colors.primary}
           onPress={handleFABPress}
           testID="dashboard-fab"
         />
@@ -64,15 +66,15 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refreshDashboard}
-            colors={['#1976D2']} // Material Design primary color
-            tintColor="#1976D2"
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
           />
         }
         testID="dashboard-scroll-view"
@@ -103,7 +105,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       <FAB
         style={styles.fab}
         icon={{ name: 'add', type: 'material', color: 'white' }}
-        color="#1976D2"
+        color={theme.colors.primary}
         onPress={handleFABPress}
         testID="dashboard-fab"
       />
@@ -114,7 +116,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA', // Material Design surface background
+    // backgroundColor will be applied dynamically via theme
   },
   scrollContainer: {
     flexGrow: 1,
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
   },
   errorContainer: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    // backgroundColor will be applied dynamically via theme
   },
   fab: {
     position: 'absolute',

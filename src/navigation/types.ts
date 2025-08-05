@@ -21,11 +21,11 @@ export type NavigationState = {
   key: string;
   index: number;
   routeNames: string[];
-  routes: Array<{
+  routes: {
     key: string;
     name: string;
     params?: object;
-  }>;
+  }[];
 };
 
 // Screen parameter types for type-safe navigation

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Platform, BackHandler } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 
 // Import screen components
 import { 
@@ -19,6 +20,7 @@ import type { RootTabParamList } from './types';
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export const AppNavigator: React.FC = () => {
+  const { theme, isDarkMode } = useTheme();
   const [isReady, setIsReady] = useState(false);
   const [initialState, setInitialState] = useState();
 
@@ -59,19 +61,35 @@ export const AppNavigator: React.FC = () => {
     return null; // Show loading screen while restoring state
   }
 
+  const navigationTheme = {
+    ...(isDarkMode ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDarkMode ? DarkTheme.colors : DefaultTheme.colors),
+      primary: theme.colors.primary,
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.onSurface,
+      border: theme.colors.outline,
+    },
+  };
+
   return (
     <NavigationContainer 
       initialState={initialState}
       onStateChange={handleStateChange}
+      theme={navigationTheme}
     >
-      <StatusBar style="dark" backgroundColor="#FFFFFF" />
+      <StatusBar
+        style={isDarkMode ? 'light' : 'dark'}
+        backgroundColor={theme.colors.surface}
+      />
       <Tab.Navigator
         screenOptions={{
-          tabBarActiveTintColor: '#1976D2', // Material Design Primary Blue
-          tabBarInactiveTintColor: '#757575', // Material Design Grey
+          tabBarActiveTintColor: theme.colors.primary,
+          tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
           tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopColor: '#E0E0E0',
+            backgroundColor: theme.colors.surface,
+            borderTopColor: theme.colors.outline,
             borderTopWidth: 1,
             height: Platform.OS === 'ios' ? 100 : 75,
             paddingBottom: Platform.OS === 'ios' ? 25 : 15,
@@ -100,7 +118,6 @@ export const AppNavigator: React.FC = () => {
                 color={color} 
               />
             ),
-            tabBarTestID: 'home-tab',
           }}
         />
         <Tab.Screen
@@ -115,7 +132,6 @@ export const AppNavigator: React.FC = () => {
                 color={color} 
               />
             ),
-            tabBarTestID: 'add-tab',
           }}
         />
         <Tab.Screen
@@ -130,7 +146,6 @@ export const AppNavigator: React.FC = () => {
                 color={color} 
               />
             ),
-            tabBarTestID: 'history-tab',
           }}
         />
         <Tab.Screen
@@ -145,7 +160,6 @@ export const AppNavigator: React.FC = () => {
                 color={color} 
               />
             ),
-            tabBarTestID: 'settings-tab',
           }}
         />
       </Tab.Navigator>

@@ -28,6 +28,7 @@ import DatePickerInput from '../components/forms/DatePickerInput';
 import { useExpenseForm } from '../hooks/useExpenseForm';
 import { DatabaseService } from '../services/DatabaseService';
 import { Category } from '../types/Category';
+import { useTheme } from '../context/ThemeContext';
 
 // Success Feedback Component
 interface SuccessFeedbackProps {
@@ -54,6 +55,7 @@ interface AddExpenseScreenProps {}
 
 export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const navigation = useNavigation();
+  const { theme } = useTheme();
   
   // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -120,21 +122,21 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 
   if (loadingCategories) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1976D2" />
-          <Text style={styles.loadingText}>Loading form...</Text>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>Loading form...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Material Design Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Add Expense</Text>
-        <Text style={styles.headerSubtitle}>Track your spending</Text>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <Text style={[styles.headerText, { color: theme.colors.onPrimary }]}>Add Expense</Text>
+        <Text style={[styles.headerSubtitle, { color: theme.colors.onPrimary }]}>Track your spending</Text>
       </View>
 
       <KeyboardAvoidingView 
@@ -232,7 +234,7 @@ const styles = StyleSheet.create({
   // Main Container
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA', // Material Design background
+    // backgroundColor will be applied dynamically via theme
   },
   
   // Loading State
@@ -245,13 +247,13 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#6B7280',
+    // color will be applied dynamically via theme
     fontWeight: '500',
   },
   
   // Header - Material Design
   header: {
-    backgroundColor: '#1976D2', // Material Design Primary
+    // backgroundColor will be applied dynamically via theme
     paddingVertical: 24,
     paddingHorizontal: 24,
     elevation: 4,
@@ -261,14 +263,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   headerText: {
-    color: '#FFFFFF',
+    // color will be applied dynamically via theme
     fontSize: 24,
     fontWeight: '600',
     fontFamily: 'Roboto', // Material Design typography
     letterSpacing: 0.15,
   },
   headerSubtitle: {
-    color: '#E3F2FD',
+    // color will be applied dynamically via theme
     fontSize: 14,
     fontWeight: '400',
     marginTop: 4,

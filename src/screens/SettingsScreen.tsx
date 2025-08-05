@@ -1,90 +1,97 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card, ListItem } from 'react-native-elements';
-import { MaterialIcons } from '@expo/vector-icons';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Snackbar } from 'react-native-paper';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/types';
+import { 
+  SettingsSection, 
+  ThemeToggleItem, 
+  DataExportItem, 
+  AppInfoSection, 
+  AboutSection 
+} from '../components/settings';
+import { useTheme } from '../context/ThemeContext';
+import { dataExportService } from '../services';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Settings'>;
 
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
-  const [loading, setLoading] = useState(false);
+  const { theme, isDarkMode, toggleTheme } = useTheme();
+  const [isExporting, setIsExporting] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   useEffect(() => {
     // Screen initialization placeholder
   }, []);
 
-  const settingsOptions = [
-    { 
-      title: 'Categories', 
-      subtitle: 'Manage expense categories',
-      icon: 'category',
-      onPress: () => console.log('Categories pressed')
-    },
-    { 
-      title: 'Budget Settings', 
-      subtitle: 'Configure budget limits',
-      icon: 'account-balance-wallet',
-      onPress: () => console.log('Budget Settings pressed')
-    },
-    { 
-      title: 'Voice Recognition', 
-      subtitle: 'Configure voice input settings',
-      icon: 'mic',
-      onPress: () => console.log('Voice Recognition pressed')
-    },
-    { 
-      title: 'Export Data', 
-      subtitle: 'Export transactions and reports',
-      icon: 'file-download',
-      onPress: () => console.log('Export Data pressed')
-    },
-    { 
-      title: 'About', 
-      subtitle: 'App information and version',
-      icon: 'info',
-      onPress: () => console.log('About pressed')
-    },
-  ];
+  const handleExportData = async () => {
+    setIsExporting(true);
+    try {
+      const fileUri = await dataExportService.exportTransactionsToCSV();
+      await dataExportService.shareExportFile(fileUri);
+      
+      showSnackbar('Data exported successfully!');
+    } catch (error) {
+      console.error('Export failed:', error);
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'An unknown error occurred during export.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const showSnackbar = (message: string) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
 
   return (
-    <View style={styles.container}>
-      <Card containerStyle={styles.headerCard}>
-        <Text h3 style={styles.title}>Settings</Text>
-        <Text style={styles.description}>
-          Configure your budget tracker preferences and settings.
-        </Text>
-      </Card>
-      
-      <ScrollView style={styles.listContainer}>
-        <Card containerStyle={styles.listCard}>
-          {settingsOptions.map((option, index) => (
-            <ListItem 
-              key={index} 
-              bottomDivider={index < settingsOptions.length - 1}
-              onPress={option.onPress}
-            >
-              <MaterialIcons 
-                name={option.icon as any} 
-                size={24} 
-                color="#1976D2" 
-              />
-              <ListItem.Content>
-                <ListItem.Title style={styles.optionTitle}>
-                  {option.title}
-                </ListItem.Title>
-                <ListItem.Subtitle style={styles.optionSubtitle}>
-                  {option.subtitle}
-                </ListItem.Subtitle>
-              </ListItem.Content>
-              <ListItem.Chevron />
-            </ListItem>
-          ))}
-          <Text style={styles.note}>
-            Settings functionality will be implemented in future stories.
-          </Text>
-        </Card>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <ScrollView style={styles.scrollContainer}>
+        
+        {/* App Information Section */}
+        <SettingsSection title="App Information">
+          <AppInfoSection />
+        </SettingsSection>
+
+        {/* Appearance Section */}
+        <SettingsSection title="Appearance">
+          <ThemeToggleItem 
+            isDarkMode={isDarkMode}
+            onToggle={toggleTheme}
+          />
+        </SettingsSection>
+
+        {/* Data Management Section */}
+        <SettingsSection title="Data Management">
+          <DataExportItem
+            onExport={handleExportData}
+            isExporting={isExporting}
+          />
+        </SettingsSection>
+
+        {/* About Section */}
+        <SettingsSection title="About" showDivider={false}>
+          <AboutSection />
+        </SettingsSection>
+        
       </ScrollView>
+
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{
+          label: 'OK',
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   );
 };
@@ -92,46 +99,9 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA', // Material Design background
   },
-  headerCard: {
-    borderRadius: 8,
-    margin: 16,
-    marginBottom: 8,
-  },
-  listContainer: {
+  scrollContainer: {
     flex: 1,
-  },
-  listCard: {
-    borderRadius: 8,
-    margin: 16,
-    marginTop: 8,
-  },
-  title: {
-    textAlign: 'center',
-    color: '#1976D2',
-    marginBottom: 8,
-  },
-  description: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#424242',
-  },
-  optionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#212121',
-  },
-  optionSubtitle: {
-    fontSize: 14,
-    color: '#757575',
-  },
-  note: {
-    fontSize: 12,
-    color: '#9E9E9E',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginTop: 16,
-    paddingHorizontal: 16,
+    paddingTop: 8,
   },
 });

@@ -12,9 +12,11 @@ import { databaseService } from '../services';
 import { useCategories } from '../hooks/useCategories';
 import { groupTransactionsByDate, TransactionGroup } from '../utils/dateFormatting';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 export const HistoryScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { theme } = useTheme();
   const { categories } = useCategories();
   
   const [transactions, setTransactions] = useState<TransactionWithCategory[]>([]);
@@ -111,7 +113,7 @@ export const HistoryScreen: React.FC = () => {
   // Loading state
   if (loading && transactions.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <LoadingState message="Loading transactions..." />
       </SafeAreaView>
     );
@@ -120,15 +122,15 @@ export const HistoryScreen: React.FC = () => {
   // Empty state
   if (!loading && transactions.length === 0) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <EmptyTransactionHistory />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Surface style={styles.surface} elevation={0}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Surface style={[styles.surface, { backgroundColor: theme.colors.surface }]} elevation={0}>
         {/* Search and Filter */}
         <TransactionHistorySearch
           searchTerm={searchTerm}
@@ -154,8 +156,8 @@ export const HistoryScreen: React.FC = () => {
               <RefreshControl
                 refreshing={loading}
                 onRefresh={handleRefresh}
-                colors={['#6750A4']} // Material Design primary color
-                tintColor="#6750A4"
+                colors={[theme.colors.primary]}
+                tintColor={theme.colors.primary}
               />
             }
             removeClippedSubviews={true}
@@ -189,11 +191,11 @@ export const HistoryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFBFE', // Material Design surface
+    // backgroundColor will be applied dynamically via theme
   },
   surface: {
     flex: 1,
-    backgroundColor: '#FFFBFE',
+    // backgroundColor will be applied dynamically via theme
   },
   sectionList: {
     flex: 1,
@@ -210,7 +212,7 @@ const styles = StyleSheet.create({
     margin: 16,
     right: 0,
     bottom: 0,
-    backgroundColor: '#6750A4', // Material Design primary
+    // backgroundColor will be applied via theme through react-native-paper
   },
   fabHidden: {
     transform: [{ scale: 0 }],
