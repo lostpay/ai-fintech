@@ -10,10 +10,22 @@ import {
   CREATE_INDEXES_SQL,
   CREATE_TRIGGERS_SQL 
 } from '../constants/database';
+import { 
+  validateCompleteTransaction, 
+  TransactionFormData,
+  formatValidationErrors
+} from '../utils/validation';
+import { 
+  ErrorHandlingService, 
+  ValidationError, 
+  DatabaseError 
+} from './ErrorHandlingService';
 
 export class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
   private isInitialized = false;
+  private categoriesCache: Category[] = [];
+  private cacheUpdated = false;
 
   /**
    * Initialize the database connection and create tables
@@ -41,6 +53,9 @@ export class DatabaseService {
       
       // Populate default categories if needed
       await this.populateDefaultCategories();
+      
+      // Initialize categories cache
+      await this.refreshCategoriesCache();
       
       this.isInitialized = true;
       console.log('Database initialized successfully');
@@ -125,6 +140,26 @@ export class DatabaseService {
   }
 
   /**
+   * Refresh categories cache for validation
+   */
+  private async refreshCategoriesCache(): Promise<void> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const categories = await this.db.getAllAsync<any>('SELECT * FROM categories ORDER BY name');
+      this.categoriesCache = categories.map(cat => ({
+        ...cat,
+        created_at: new Date(cat.created_at),
+        is_default: Boolean(cat.is_default)
+      }));
+      this.cacheUpdated = true;
+    } catch (error) {
+      console.error('Failed to refresh categories cache:', error);
+      this.cacheUpdated = false;
+    }
+  }
+
+  /**
    * Close database connection
    */
   async close(): Promise<void> {
@@ -132,6 +167,8 @@ export class DatabaseService {
       await this.db.closeAsync();
       this.db = null;
       this.isInitialized = false;
+      this.categoriesCache = [];
+      this.cacheUpdated = false;
       console.log('Database connection closed');
     }
   }
@@ -224,7 +261,7 @@ export class DatabaseService {
   // ========== TRANSACTION CRUD OPERATIONS ==========
 
   /**
-   * Create a new transaction
+   * Create a new transaction with comprehensive validation
    */
   async createTransaction(transactionData: CreateTransactionRequest): Promise<Transaction> {
     if (!this.db) throw new Error('Database not connected');
@@ -254,7 +291,70 @@ export class DatabaseService {
       return this.formatTransactionDates(transaction);
     } catch (error) {
       console.error('Failed to create transaction:', error);
-      throw error;
+      throw ErrorHandlingService.processError(error, 'Transaction Creation');
+    }
+  }
+
+  /**
+   * Create transaction with form data validation
+   */
+  async createTransactionWithValidation(formData: TransactionFormData): Promise<Transaction> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      // Refresh categories cache if needed
+      if (!this.cacheUpdated) {
+        await this.refreshCategoriesCache();
+      }
+
+      // Comprehensive validation
+      const validationResult = validateCompleteTransaction(formData, this.categoriesCache);
+      
+      if (!validationResult.isValid) {
+        throw new ValidationError(validationResult.errors);
+      }
+
+      const sanitizedData = validationResult.sanitizedData!;
+
+      // Transform data for database storage (dollars to cents)
+      const dbData: CreateTransactionRequest = {
+        amount: Math.round(sanitizedData.amount * 100), // Convert to cents
+        description: sanitizedData.description,
+        category_id: sanitizedData.category_id,
+        transaction_type: sanitizedData.transaction_type || 'expense',
+        date: sanitizedData.date instanceof Date 
+          ? sanitizedData.date
+          : new Date(sanitizedData.date)
+      };
+
+      // Execute database operation with transaction management
+      return await this.executeTransaction(async () => {
+        const insertResult = await this.db!.runAsync(
+          'INSERT INTO transactions (amount, description, category_id, transaction_type, date) VALUES (?, ?, ?, ?, ?)',
+          [
+            dbData.amount, 
+            dbData.description, 
+            dbData.category_id, 
+            dbData.transaction_type, 
+            dbData.date.toISOString().split('T')[0]
+          ]
+        );
+
+        const transaction = await this.db!.getFirstAsync<Transaction>(
+          'SELECT * FROM transactions WHERE id = ?',
+          [insertResult.lastInsertRowId]
+        );
+
+        if (!transaction) {
+          throw new Error('Failed to retrieve created transaction');
+        }
+
+        return this.formatTransactionDates(transaction);
+      });
+      
+    } catch (error) {
+      console.error('Failed to create transaction with validation:', error);
+      throw ErrorHandlingService.processError(error, 'Transaction Creation');
     }
   }
 
