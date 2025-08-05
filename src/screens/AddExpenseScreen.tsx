@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, ScrollView, View, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import TransactionForm from '../components/forms/TransactionFormSimple';
+import TransactionForm from '../components/forms/TransactionForm';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface AddExpenseScreenProps {}

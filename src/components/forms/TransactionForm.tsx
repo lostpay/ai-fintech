@@ -1,329 +1,723 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Platform, TextInput, TouchableOpacity, Text } from 'react-native';
+/**
+ * Enhanced TransactionForm with comprehensive validation integration
+ * Implements Story 1.4 requirements for advanced form validation
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  View, 
+  StyleSheet, 
+  Alert, 
+  Platform, 
+  TextInput, 
+  TouchableOpacity, 
+  Text,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  ScrollView
+} from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { 
+  validateCompleteTransaction, 
+  validateAmount, 
+  validateDescription, 
+  validateCategoryId, 
+  validateTransactionDate,
+  TransactionFormData,
+  formatValidationErrors
+} from '../../utils/validation';
+import { 
+  ErrorHandlingService, 
+  ValidationError,
+  isAppError
+} from '../../services/ErrorHandlingService';
+import { DatabaseService } from '../../services/DatabaseService';
 import { Category } from '../../types/Category';
-import { CreateTransactionRequest } from '../../types/Transaction';
-import { useCategories } from '../../hooks/useCategories';
-import { useTransactions } from '../../hooks/useTransactions';
 
 interface TransactionFormProps {
-  onSubmit: (success: boolean) => void;
+  onSubmit: (success: boolean, message?: string) => void;
+  initialData?: Partial<TransactionFormData>;
+  submitButtonText?: string;
 }
 
 interface FormData {
   amount: string;
   description: string;
-  category_id: number | null;
+  category_id: number | string;
   date: Date;
+  transaction_type: 'expense' | 'income';
 }
 
 interface FormErrors {
   amount?: string;
   description?: string;
   category_id?: string;
+  date?: string;
+  general?: string;
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ onSubmit }) => {
-  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
-  const { addTransaction, loading: submitting } = useTransactions();
+interface ValidationState {
+  isValidating: boolean;
+  hasValidated: boolean;
+  isValid: boolean;
+}
+
+const TransactionForm: React.FC<TransactionFormProps> = ({ 
+  onSubmit, 
+  initialData,
+  submitButtonText = 'Save Expense'
+}) => {
+  // Services
+  const [databaseService] = useState(() => new DatabaseService());
   
+  // Form state
   const [formData, setFormData] = useState<FormData>({
-    amount: '',
-    description: '',
-    category_id: null,
-    date: new Date(),
+    amount: initialData?.amount?.toString() || '',
+    description: initialData?.description || '',
+    category_id: initialData?.category_id || '',
+    date: initialData?.date ? new Date(initialData.date) : new Date(),
+    transaction_type: initialData?.transaction_type || 'expense',
   });
   
   const [errors, setErrors] = useState<FormErrors>({});
+  const [validationState, setValidationState] = useState<ValidationState>({
+    isValidating: false,
+    hasValidated: false,
+    isValid: false
+  });
+  
+  // UI state
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState({ categories: true, submitting: false });
 
+  /**
+   * Initialize database and load categories
+   */
   useEffect(() => {
-    if (categoriesError) {
-      Alert.alert('Error', 'Failed to load categories. Please try again.');
-    }
-  }, [categoriesError]);
+    const initializeForm = async () => {
+      try {
+        await databaseService.initialize();
+        const loadedCategories = await databaseService.getCategories();
+        setCategories(loadedCategories);
+        setLoading(prev => ({ ...prev, categories: false }));
+      } catch (error) {
+        console.error('Failed to initialize form:', error);
+        setLoading(prev => ({ ...prev, categories: false }));
+        Alert.alert('Error', 'Failed to load form data. Please restart the app.');
+      }
+    };
 
-  const validateAmount = (amount: string): string | undefined => {
-    if (!amount.trim()) {
-      return 'Amount is required';
-    }
-    
-    const numericAmount = parseFloat(amount);
-    if (isNaN(numericAmount) || numericAmount <= 0) {
-      return 'Amount must be a positive number';
-    }
-    
-    // Check for reasonable currency format (max 2 decimal places)
-    const decimalPlaces = (amount.split('.')[1] || '').length;
-    if (decimalPlaces > 2) {
-      return 'Amount cannot have more than 2 decimal places';
-    }
-    
-    return undefined;
-  };
+    initializeForm();
 
-  const validateDescription = (description: string): string | undefined => {
-    if (!description.trim()) {
-      return 'Description is required';
-    }
-    
-    if (description.length > 200) {
-      return 'Description cannot exceed 200 characters';
-    }
-    
-    return undefined;
-  };
+    // Cleanup on unmount
+    return () => {
+      databaseService.close();
+    };
+  }, []);
 
-  const validateCategory = (category_id: number | null): string | undefined => {
-    if (!category_id) {
-      return 'Category is required';
+  /**
+   * Real-time validation with debouncing
+   */
+  const performValidation = useCallback(async (data: FormData) => {
+    setValidationState(prev => ({ ...prev, isValidating: true }));
+    
+    try {
+      // Convert form data to validation format
+      const validationData: TransactionFormData = {
+        amount: data.amount,
+        description: data.description,
+        category_id: data.category_id,
+        date: data.date,
+        transaction_type: data.transaction_type
+      };
+
+      // Perform comprehensive validation
+      const validationResult = validateCompleteTransaction(validationData, categories);
+      
+      setErrors(validationResult.errors);
+      setValidationState({
+        isValidating: false,
+        hasValidated: true,
+        isValid: validationResult.isValid
+      });
+      
+    } catch (error) {
+      console.error('Validation error:', error);
+      setValidationState(prev => ({ 
+        ...prev, 
+        isValidating: false,
+        isValid: false
+      }));
     }
-    
-    return undefined;
-  };
+  }, [categories]);
 
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
+  /**
+   * Debounced validation effect
+   */
+  useEffect(() => {
+    if (categories.length === 0) return; // Wait for categories to load
     
-    newErrors.amount = validateAmount(formData.amount);
-    newErrors.description = validateDescription(formData.description);
-    newErrors.category_id = validateCategory(formData.category_id);
-    
-    setErrors(newErrors);
-    
-    return !Object.values(newErrors).some(error => error !== undefined);
-  };
+    const validationTimeout = setTimeout(() => {
+      performValidation(formData);
+    }, 300); // 300ms debounce
 
+    return () => clearTimeout(validationTimeout);
+  }, [formData, categories, performValidation]);
+
+  /**
+   * Enhanced amount change handler with real-time validation
+   */
   const handleAmountChange = (value: string) => {
-    // Allow only numbers and decimal point
-    const sanitized = value.replace(/[^0-9.]/g, '');
+    // Allow only numbers, decimal point, and remove multiple decimals
+    let sanitized = value.replace(/[^0-9.]/g, '');
+    const decimalCount = (sanitized.match(/\./g) || []).length;
+    if (decimalCount > 1) {
+      const parts = sanitized.split('.');
+      sanitized = parts[0] + '.' + parts.slice(1).join('');
+    }
+    
     setFormData(prev => ({ ...prev, amount: sanitized }));
     
-    // Clear amount error if exists
+    // Clear amount error for immediate feedback
     if (errors.amount) {
       setErrors(prev => ({ ...prev, amount: undefined }));
     }
   };
 
+  /**
+   * Enhanced description change handler with character counter
+   */
   const handleDescriptionChange = (value: string) => {
     setFormData(prev => ({ ...prev, description: value }));
     
-    // Clear description error if exists
+    // Clear description error for immediate feedback
     if (errors.description) {
       setErrors(prev => ({ ...prev, description: undefined }));
     }
   };
 
-  const handleCategoryChange = (value: number) => {
+  /**
+   * Enhanced category change handler with validation
+   */
+  const handleCategoryChange = (value: number | string) => {
     setFormData(prev => ({ ...prev, category_id: value }));
     
-    // Clear category error if exists
+    // Clear category error for immediate feedback
     if (errors.category_id) {
       setErrors(prev => ({ ...prev, category_id: undefined }));
     }
   };
 
+  /**
+   * Enhanced date change handler with validation
+   */
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
       setFormData(prev => ({ ...prev, date: selectedDate }));
+      
+      // Clear date error
+      if (errors.date) {
+        setErrors(prev => ({ ...prev, date: undefined }));
+      }
     }
   };
 
+  /**
+   * Enhanced form submission with comprehensive error handling
+   */
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (validationState.isValidating) {
+      Alert.alert('Please Wait', 'Form validation is in progress...');
       return;
     }
 
+    if (!validationState.isValid || Object.keys(errors).some(key => errors[key as keyof FormErrors])) {
+      Alert.alert(
+        'Validation Error', 
+        'Please correct the highlighted errors before submitting.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, submitting: true }));
+
     try {
-      // Convert amount to cents for database storage
-      const amountInCents = Math.round(parseFloat(formData.amount) * 100);
-      
-      const transactionData: CreateTransactionRequest = {
-        amount: amountInCents,
+      // Convert form data to transaction format
+      const transactionData: TransactionFormData = {
+        amount: parseFloat(formData.amount),
         description: formData.description.trim(),
-        category_id: formData.category_id!,
-        transaction_type: 'expense',
+        category_id: typeof formData.category_id === 'string' 
+          ? parseInt(formData.category_id, 10) 
+          : formData.category_id,
         date: formData.date,
+        transaction_type: formData.transaction_type
       };
 
-      await addTransaction(transactionData);
+      // Create transaction through enhanced database service
+      const result = await databaseService.createTransactionWithValidation(transactionData);
+      
+      // Success feedback
+      const successMessage = `${formData.transaction_type === 'expense' ? 'Expense' : 'Income'} added successfully!`;
       
       // Clear form after successful submission
       setFormData({
         amount: '',
         description: '',
-        category_id: null,
+        category_id: '',
         date: new Date(),
+        transaction_type: 'expense'
       });
       setErrors({});
+      setValidationState({
+        isValidating: false,
+        hasValidated: false,
+        isValid: false
+      });
       
-      Alert.alert('Success', 'Expense added successfully!');
-      onSubmit(true);
+      Alert.alert('Success', successMessage);
+      onSubmit(true, successMessage);
       
     } catch (error) {
       console.error('Error saving transaction:', error);
-      Alert.alert('Error', 'Failed to save expense. Please try again.');
-      onSubmit(false);
+      
+      // Handle different types of errors
+      let errorMessage = 'Failed to save transaction. Please try again.';
+      
+      if (error instanceof ValidationError) {
+        setErrors(error.validationErrors);
+        errorMessage = formatValidationErrors(error.validationErrors);
+      } else if (isAppError(error)) {
+        errorMessage = error.error.message;
+        if (error.error.code === 'FOREIGN_KEY_ERROR') {
+          // Refresh categories if foreign key error
+          try {
+            const refreshedCategories = await databaseService.getCategories();
+            setCategories(refreshedCategories);
+          } catch (refreshError) {
+            console.error('Failed to refresh categories:', refreshError);
+          }
+        }
+      }
+      
+      Alert.alert('Error', errorMessage);
+      onSubmit(false, errorMessage);
+    } finally {
+      setLoading(prev => ({ ...prev, submitting: false }));
     }
   };
 
+  /**
+   * Format date for display
+   */
   const formatDate = (date: Date): string => {
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
-  if (categoriesLoading) {
+  /**
+   * Get character count display for description
+   */
+  const getDescriptionInfo = () => {
+    const length = formData.description.length;
+    const maxLength = 200;
+    const remaining = maxLength - length;
+    const isNearLimit = remaining <= 20;
+    
+    return {
+      text: `${length}/${maxLength}`,
+      color: isNearLimit ? (remaining < 0 ? '#ff190c' : '#ff9500') : '#86939e'
+    };
+  };
+
+  // Loading state
+  if (loading.categories) {
     return (
       <View style={styles.loadingContainer}>
-        <Text>Loading categories...</Text>
+        <ActivityIndicator size="large" color="#2196F3" />
+        <Text style={styles.loadingText}>Loading form...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Input
-        label="Amount"
-        placeholder="0.00"
-        value={formData.amount}
-        onChangeText={handleAmountChange}
-        keyboardType="numeric"
-        leftIcon={{ name: 'attach-money', color: '#2196F3' }}
-        errorMessage={errors.amount}
-        testID="amount-input"
-        containerStyle={styles.inputContainer}
-      />
-
-      <Input
-        label="Description"
-        placeholder="Enter expense description"
-        value={formData.description}
-        onChangeText={handleDescriptionChange}
-        leftIcon={{ name: 'description', color: '#2196F3' }}
-        errorMessage={errors.description}
-        testID="description-input"
-        containerStyle={styles.inputContainer}
-        maxLength={200}
-      />
-
-      <View style={styles.pickerContainer}>
-        <Text style={styles.pickerLabel}>Category</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={formData.category_id ?? undefined}
-            onValueChange={handleCategoryChange}
-            testID="category-picker"
-            style={styles.picker}
-          >
-            <Picker.Item label="Select a category" value={null} />
-            {categories.map((category: Category) => (
-              <Picker.Item
-                key={category.id}
-                label={category.name}
-                value={category.id}
-              />
-            ))}
-          </Picker>
+    <KeyboardAvoidingView 
+      style={styles.container} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Amount Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Amount *</Text>
+          <View style={[
+            styles.inputWrapper, 
+            errors.amount && styles.inputWrapperError
+          ]}>
+            <Text style={styles.currencySymbol}>$</Text>
+            <TextInput
+              style={styles.amountInput}
+              placeholder="0.00"
+              value={formData.amount}
+              onChangeText={handleAmountChange}
+              keyboardType="numeric"
+              testID="amount-input"
+              placeholderTextColor="#86939e"
+            />
+          </View>
+          {errors.amount && (
+            <Text style={styles.errorText}>{errors.amount}</Text>
+          )}
+          {validationState.isValidating && formData.amount && (
+            <Text style={styles.validatingText}>Validating...</Text>
+          )}
         </View>
-        {errors.category_id && (
-          <Text style={styles.errorText}>{errors.category_id}</Text>
+
+        {/* Description Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Description *</Text>
+          <TextInput
+            style={[
+              styles.textInput, 
+              errors.description && styles.textInputError
+            ]}
+            placeholder="Enter transaction description"
+            value={formData.description}
+            onChangeText={handleDescriptionChange}
+            testID="description-input"
+            placeholderTextColor="#86939e"
+            maxLength={200}
+            multiline
+            numberOfLines={2}
+          />
+          <View style={styles.inputInfo}>
+            {errors.description && (
+              <Text style={styles.errorText}>{errors.description}</Text>
+            )}
+            <Text style={[
+              styles.characterCount, 
+              { color: getDescriptionInfo().color }
+            ]}>
+              {getDescriptionInfo().text}
+            </Text>
+          </View>
+        </View>
+
+        {/* Category Picker */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Category *</Text>
+          <View style={[
+            styles.pickerWrapper,
+            errors.category_id && styles.pickerWrapperError
+          ]}>
+            <Picker
+              selectedValue={formData.category_id}
+              onValueChange={handleCategoryChange}
+              testID="category-picker"
+              style={styles.picker}
+            >
+              <Picker.Item label="Select a category" value="" />
+              {categories.map((category: Category) => (
+                <Picker.Item
+                  key={category.id}
+                  label={category.name}
+                  value={category.id}
+                />
+              ))}
+            </Picker>
+          </View>
+          {errors.category_id && (
+            <Text style={styles.errorText}>{errors.category_id}</Text>
+          )}
+        </View>
+
+        {/* Transaction Type Toggle */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Type</Text>
+          <View style={styles.typeToggleContainer}>
+            <TouchableOpacity
+              style={[
+                styles.typeButton,
+                formData.transaction_type === 'expense' && styles.typeButtonActive
+              ]}
+              onPress={() => setFormData(prev => ({ ...prev, transaction_type: 'expense' }))}
+              testID="expense-toggle"
+            >
+              <Text style={[
+                styles.typeButtonText,
+                formData.transaction_type === 'expense' && styles.typeButtonTextActive
+              ]}>
+                Expense
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.typeButton,
+                formData.transaction_type === 'income' && styles.typeButtonActive
+              ]}
+              onPress={() => setFormData(prev => ({ ...prev, transaction_type: 'income' }))}
+              testID="income-toggle"
+            >
+              <Text style={[
+                styles.typeButtonText,
+                formData.transaction_type === 'income' && styles.typeButtonTextActive
+              ]}>
+                Income
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Date Picker */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Date</Text>
+          <TouchableOpacity
+            style={[
+              styles.dateButton,
+              errors.date && styles.dateButtonError
+            ]}
+            onPress={() => setShowDatePicker(true)}
+            testID="date-picker-button"
+          >
+            <Text style={styles.dateButtonText}>
+              {formatDate(formData.date)}
+            </Text>
+          </TouchableOpacity>
+          {errors.date && (
+            <Text style={styles.errorText}>{errors.date}</Text>
+          )}
+        </View>
+
+        {showDatePicker && (
+          <DateTimePicker
+            testID="date-picker"
+            value={formData.date}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleDateChange}
+            maximumDate={new Date(new Date().getFullYear() + 1, 11, 31)}
+            minimumDate={new Date(new Date().getFullYear() - 1, 0, 1)}
+          />
         )}
-      </View>
 
-      <View style={styles.dateContainer}>
-        <Text style={styles.dateLabel}>Date</Text>
-        <Button
-          title={formatDate(formData.date)}
-          onPress={() => setShowDatePicker(true)}
-          buttonStyle={styles.dateButton}
-          titleStyle={styles.dateButtonText}
-          testID="date-picker-button"
-        />
-      </View>
+        {/* General Error */}
+        {errors.general && (
+          <View style={styles.generalErrorContainer}>
+            <Text style={styles.generalErrorText}>{errors.general}</Text>
+          </View>
+        )}
 
-      {showDatePicker && (
-        <DateTimePicker
-          testID="date-picker"
-          value={formData.date}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleDateChange}
-        />
-      )}
+        {/* Submit Button */}
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            (!validationState.isValid || loading.submitting) && styles.submitButtonDisabled
+          ]}
+          onPress={handleSubmit}
+          disabled={!validationState.isValid || loading.submitting}
+          testID="submit-button"
+        >
+          {loading.submitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.submitButtonText}>{submitButtonText}</Text>
+          )}
+        </TouchableOpacity>
 
-      <Button
-        title="Save Expense"
-        onPress={handleSubmit}
-        loading={submitting}
-        disabled={submitting}
-        buttonStyle={styles.submitButton}
-        testID="submit-button"
-      />
-    </View>
+        {/* Form Status Indicator */}
+        {validationState.hasValidated && (
+          <View style={styles.statusContainer}>
+            <Text style={[
+              styles.statusText,
+              { color: validationState.isValid ? '#4CAF50' : '#ff190c' }
+            ]}>
+              {validationState.isValid ? '✓ Form is valid' : '✗ Please fix errors above'}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     padding: 16,
+    backgroundColor: '#fff',
   },
   loadingContainer: {
-    padding: 20,
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#86939e',
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  pickerContainer: {
-    marginBottom: 16,
-  },
-  pickerLabel: {
+  inputLabel: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#86939e',
-    marginLeft: 10,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#86939e',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+  },
+  inputWrapperError: {
+    borderColor: '#ff190c',
+  },
+  currencySymbol: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginRight: 8,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 18,
+    paddingVertical: 12,
+    color: '#333',
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#86939e',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+    backgroundColor: '#fff',
+    textAlignVertical: 'top',
+  },
+  textInputError: {
+    borderColor: '#ff190c',
+  },
+  inputInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  characterCount: {
+    fontSize: 12,
+    marginLeft: 'auto',
   },
   pickerWrapper: {
     borderWidth: 1,
     borderColor: '#86939e',
-    borderRadius: 4,
+    borderRadius: 8,
     backgroundColor: '#fff',
+  },
+  pickerWrapperError: {
+    borderColor: '#ff190c',
   },
   picker: {
     height: 50,
   },
-  errorText: {
-    color: '#ff190c',
-    fontSize: 12,
-    marginLeft: 10,
-    marginTop: 5,
+  typeToggleContainer: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#86939e',
   },
-  dateContainer: {
-    marginBottom: 24,
+  typeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dateLabel: {
+  typeButtonActive: {
+    backgroundColor: '#2196F3',
+  },
+  typeButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#86939e',
-    marginLeft: 10,
-    marginBottom: 8,
+    fontWeight: '500',
+    color: '#333',
+  },
+  typeButtonTextActive: {
+    color: '#fff',
   },
   dateButton: {
-    backgroundColor: '#f0f0f0',
-    borderColor: '#86939e',
     borderWidth: 1,
-    borderRadius: 4,
+    borderColor: '#86939e',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+  },
+  dateButtonError: {
+    borderColor: '#ff190c',
   },
   dateButtonText: {
-    color: '#333',
     fontSize: 16,
+    color: '#333',
   },
   submitButton: {
     backgroundColor: '#2196F3',
-    borderRadius: 4,
-    paddingVertical: 12,
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#86939e',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: '#ff190c',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  validatingText: {
+    color: '#2196F3',
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  generalErrorContainer: {
+    backgroundColor: '#ffebee',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff190c',
+  },
+  generalErrorText: {
+    color: '#c62828',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  statusContainer: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 
