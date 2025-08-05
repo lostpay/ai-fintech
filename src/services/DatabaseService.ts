@@ -698,6 +698,18 @@ export class DatabaseService {
   }
 
   /**
+   * Format transaction with category dates from string to Date objects
+   */
+  private formatTransactionWithCategoryDates(transaction: any): TransactionWithCategory {
+    return {
+      ...transaction,
+      date: new Date(transaction.date),
+      created_at: new Date(transaction.created_at),
+      updated_at: new Date(transaction.updated_at)
+    };
+  }
+
+  /**
    * Format budget dates from string to Date objects
    */
   private formatBudgetDates(budget: any): Budget {
@@ -721,6 +733,204 @@ export class DatabaseService {
       updated_at: new Date(goal.updated_at),
       is_completed: Boolean(goal.is_completed)
     };
+  }
+
+  /**
+   * Get transactions with categories with pagination support
+   * Story 2.4: Enhanced database queries for history display
+   */
+  async getTransactionsWithCategoriesPaginated(
+    offset: number = 0,
+    limit: number = 50,
+    categoryId?: number,
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TransactionWithCategory[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      let query = `
+        SELECT 
+          t.id,
+          t.amount,
+          t.description,
+          t.category_id,
+          t.transaction_type,
+          t.date,
+          t.created_at,
+          t.updated_at,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      
+      if (categoryId) {
+        query += ' AND t.category_id = ?';
+        params.push(categoryId);
+      }
+      
+      if (transactionType) {
+        query += ' AND t.transaction_type = ?';
+        params.push(transactionType);
+      }
+      
+      if (startDate) {
+        query += ' AND t.date >= ?';
+        params.push(startDate.toISOString().split('T')[0]);
+      }
+      
+      if (endDate) {
+        query += ' AND t.date <= ?';
+        params.push(endDate.toISOString().split('T')[0]);
+      }
+      
+      query += ' ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+      
+      const results = await this.db.getAllAsync<any>(query, params);
+      
+      return results.map(this.formatTransactionWithCategoryDates);
+    } catch (error) {
+      throw ErrorHandlingService.processError(
+        error,
+        'Failed to fetch paginated transactions with categories'
+      );
+    }
+  }
+
+  /**
+   * Search transactions with full-text search capability
+   * Story 2.4: Enhanced search functionality
+   */
+  async searchTransactions(
+    searchTerm?: string,
+    categoryId?: number,
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<TransactionWithCategory[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      let query = `
+        SELECT 
+          t.id,
+          t.amount,
+          t.description,
+          t.category_id,
+          t.transaction_type,
+          t.date,
+          t.created_at,
+          t.updated_at,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      
+      if (searchTerm) {
+        query += ' AND (t.description LIKE ? OR c.name LIKE ?)';
+        const searchPattern = `%${searchTerm}%`;
+        params.push(searchPattern, searchPattern);
+      }
+      
+      if (categoryId) {
+        query += ' AND t.category_id = ?';
+        params.push(categoryId);
+      }
+      
+      if (transactionType) {
+        query += ' AND t.transaction_type = ?';
+        params.push(transactionType);
+      }
+      
+      if (startDate) {
+        query += ' AND t.date >= ?';
+        params.push(startDate.toISOString().split('T')[0]);
+      }
+      
+      if (endDate) {
+        query += ' AND t.date <= ?';
+        params.push(endDate.toISOString().split('T')[0]);
+      }
+      
+      query += ' ORDER BY t.date DESC, t.created_at DESC';
+      
+      const results = await this.db.getAllAsync<any>(query, params);
+      
+      return results.map(this.formatTransactionWithCategoryDates);
+    } catch (error) {
+      throw ErrorHandlingService.processError(
+        error,
+        'Failed to search transactions'
+      );
+    }
+  }
+
+  /**
+   * Get transaction count for pagination
+   * Story 2.4: Support for pagination calculations
+   */
+  async getTransactionCount(
+    categoryId?: number,
+    transactionType?: 'expense' | 'income',
+    startDate?: Date,
+    endDate?: Date,
+    searchTerm?: string
+  ): Promise<number> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      let query = `
+        SELECT COUNT(*) as count
+        FROM transactions t
+        JOIN categories c ON t.category_id = c.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      
+      if (searchTerm) {
+        query += ' AND (t.description LIKE ? OR c.name LIKE ?)';
+        const searchPattern = `%${searchTerm}%`;
+        params.push(searchPattern, searchPattern);
+      }
+      
+      if (categoryId) {
+        query += ' AND t.category_id = ?';
+        params.push(categoryId);
+      }
+      
+      if (transactionType) {
+        query += ' AND t.transaction_type = ?';
+        params.push(transactionType);
+      }
+      
+      if (startDate) {
+        query += ' AND t.date >= ?';
+        params.push(startDate.toISOString().split('T')[0]);
+      }
+      
+      if (endDate) {
+        query += ' AND t.date <= ?';
+        params.push(endDate.toISOString().split('T')[0]);
+      }
+      
+      const result = await this.db.getFirstAsync<{ count: number }>(query, params);
+      return result?.count ?? 0;
+    } catch (error) {
+      throw ErrorHandlingService.processError(
+        error,
+        'Failed to count transactions'
+      );
+    }
   }
 
   /**
