@@ -1,2 +1,2 @@
 // Screen components barrel export
-// Export screen components here when they are created
+export { default as AddExpenseScreen } from './AddExpenseScreen';

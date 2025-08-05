@@ -1,5 +1,2 @@
 // Main components barrel export
-export * from './common';
-export * from './forms';
-export * from './lists';
-export * from './charts';
+// Component exports will be added here as they are created

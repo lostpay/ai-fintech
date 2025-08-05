@@ -1,6 +1,6 @@
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
+  preset: 'react-native',
+  testEnvironment: 'jsdom',
   roots: ['<rootDir>/__tests__', '<rootDir>/src'],
   testMatch: [
     '**/__tests__/**/*.(test|spec).(ts|tsx|js|jsx)',
@@ -15,4 +15,11 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
+  setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(@react-native|react-native|react-native-elements|@react-native-community|@react-native-picker)/)',
+  ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
 };

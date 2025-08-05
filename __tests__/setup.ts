@@ -1,7 +1,8 @@
-// Test setup configuration
+// Test setup configuration  
 // Configure testing environment here
 
 import '@testing-library/react-native/extend-expect';
+import '@testing-library/jest-native/extend-expect';
 
 // Mock expo modules if needed
 jest.mock('expo-constants', () => ({
@@ -12,14 +13,15 @@ jest.mock('expo-constants', () => ({
 
 // Mock expo-sqlite
 jest.mock('expo-sqlite', () => ({
-  openDatabaseSync: jest.fn(() => ({
-    execSync: jest.fn(),
-    getAllSync: jest.fn(() => []),
-    getFirstSync: jest.fn(() => null),
-    runSync: jest.fn(),
-    prepareSync: jest.fn(() => ({
-      executeSync: jest.fn(),
-      finalizeSync: jest.fn(),
+  openDatabaseAsync: jest.fn(() => Promise.resolve({
+    execAsync: jest.fn(() => Promise.resolve()),
+    getAllAsync: jest.fn(() => Promise.resolve([])),
+    getFirstAsync: jest.fn(() => Promise.resolve(null)),
+    runAsync: jest.fn(() => Promise.resolve({ lastInsertRowId: 1, changes: 1 })),
+    closeAsync: jest.fn(() => Promise.resolve()),
+    prepareAsync: jest.fn(() => Promise.resolve({
+      executeAsync: jest.fn(() => Promise.resolve()),
+      finalizeAsync: jest.fn(() => Promise.resolve()),
     })),
   })),
 }));

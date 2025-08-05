@@ -1,2 +1,5 @@
 // TypeScript type definitions barrel export
-// Export type definitions here when they are created
+export * from './Transaction';
+export * from './Category';
+export * from './Budget';
+export * from './Goal';
