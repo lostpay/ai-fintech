@@ -71,7 +71,6 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
               data={budgetedData}
               svg={{ 
                 fill: theme.colors.primary, 
-                opacity: 0.6,
                 stroke: theme.colors.primary,
                 strokeWidth: 1
               }}
@@ -86,7 +85,6 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
               data={spentData}
               svg={{ 
                 fill: theme.colors.secondary, 
-                opacity: 0.8,
                 stroke: theme.colors.secondary,
                 strokeWidth: 1
               }}

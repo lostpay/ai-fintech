@@ -416,7 +416,7 @@ export class DatabaseService {
             dbData.description, 
             dbData.category_id, 
             dbData.transaction_type, 
-            dbData.date.toISOString().split('T')[0]
+            dbData.date?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]
           ]
         );
 

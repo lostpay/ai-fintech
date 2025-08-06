@@ -49,7 +49,7 @@ export class ErrorHandlingService {
       originalError: error?.message || String(error),
       context,
       timestamp,
-      userId: null // Single-user app
+      userId: undefined // Single-user app
     };
 
     // Handle ValidationError
