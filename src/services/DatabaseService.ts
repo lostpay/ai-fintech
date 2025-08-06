@@ -20,6 +20,7 @@ import {
   ValidationError, 
   DatabaseError 
 } from './ErrorHandlingService';
+import { emitTransactionChanged, emitBudgetChanged } from '../utils/eventEmitter';
 
 export class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -288,7 +289,17 @@ export class DatabaseService {
         throw new Error('Failed to retrieve created transaction');
       }
       
-      return this.formatTransactionDates(transaction);
+      const formattedTransaction = this.formatTransactionDates(transaction);
+      
+      // Emit transaction changed event for real-time budget updates
+      emitTransactionChanged({
+        type: 'created',
+        transactionId: formattedTransaction.id,
+        categoryId: formattedTransaction.category_id,
+        amount: formattedTransaction.amount
+      });
+      
+      return formattedTransaction;
     } catch (error) {
       console.error('Failed to create transaction:', error);
       throw ErrorHandlingService.processError(error, 'Transaction Creation');
@@ -349,7 +360,17 @@ export class DatabaseService {
           throw new Error('Failed to retrieve created transaction');
         }
 
-        return this.formatTransactionDates(transaction);
+        const formattedTransaction = this.formatTransactionDates(transaction);
+        
+        // Emit transaction changed event for real-time budget updates
+        emitTransactionChanged({
+          type: 'created',
+          transactionId: formattedTransaction.id,
+          categoryId: formattedTransaction.category_id,
+          amount: formattedTransaction.amount
+        });
+        
+        return formattedTransaction;
       });
       
     } catch (error) {
@@ -547,6 +568,15 @@ export class DatabaseService {
         throw new Error('Failed to retrieve updated transaction');
       }
       
+      // Emit transaction changed event for real-time budget updates
+      emitTransactionChanged({
+        type: 'updated',
+        transactionId: transaction.id,
+        categoryId: transaction.category_id,
+        amount: transaction.amount,
+        previousAmount: updateData.amount
+      });
+      
       return transaction;
     } catch (error) {
       console.error('Failed to update transaction:', error);
@@ -561,11 +591,25 @@ export class DatabaseService {
     if (!this.db) throw new Error('Database not connected');
     
     try {
+      // Get transaction data before deleting for event emission
+      const transaction = await this.getTransactionById(id);
+      if (!transaction) {
+        throw new Error('Transaction not found');
+      }
+      
       const result = await this.db.runAsync('DELETE FROM transactions WHERE id = ?', [id]);
       
       if (result.changes === 0) {
         throw new Error('Transaction not found');
       }
+      
+      // Emit transaction changed event for real-time budget updates
+      emitTransactionChanged({
+        type: 'deleted',
+        transactionId: transaction.id,
+        categoryId: transaction.category_id,
+        amount: transaction.amount
+      });
     } catch (error) {
       console.error('Failed to delete transaction:', error);
       throw error;

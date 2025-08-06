@@ -9,6 +9,7 @@ import { QuickStatsCard } from '../components/lists/QuickStatsCard';
 import { RecentTransactionsList } from '../components/lists/RecentTransactionsList';
 import { LoadingState } from '../components/common/LoadingState';
 import { EmptyDashboard } from '../components/common/EmptyDashboard';
+import { BudgetSummary } from '../components/common/BudgetSummary';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
@@ -92,6 +93,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           transactionCount={dashboardData.transactionCount}
           loading={loading}
         />
+
+        {/* Budget Progress Summary */}
+        <BudgetSummary maxItems={3} showUnbudgeted={true} />
 
         {/* Recent Transactions */}
         <RecentTransactionsList

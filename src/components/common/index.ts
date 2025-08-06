@@ -4,3 +4,4 @@ export { LoadingState } from './LoadingState';
 export { EmptyDashboard } from './EmptyDashboard';
 export { EmptyTransactionHistory } from './EmptyTransactionHistory';
 export { TransactionHistorySearch } from './TransactionHistorySearch';
+export { BudgetSummary } from './BudgetSummary';
