@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { LineChart, XAxis, YAxis } from 'react-native-svg-charts';
-import { Circle, G, Line, Text as SvgText } from 'react-native-svg';
+import { Circle, G, Text as SvgText } from 'react-native-svg';
 import { SpendingTrend } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';

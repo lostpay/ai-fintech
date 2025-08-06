@@ -5,8 +5,8 @@ import { BudgetCalculationService } from './BudgetCalculationService';
 import { BudgetAlertService } from './BudgetAlertService';
 import { BudgetAnalyticsService } from './BudgetAnalyticsService';
 
-// Create a singleton instance of DatabaseService
-export const databaseService = new DatabaseService();
+// Get the singleton instance of DatabaseService
+export const databaseService = DatabaseService.getInstance();
 
 // Create a singleton instance of DataExportService
 export const dataExportService = new DataExportService(databaseService);

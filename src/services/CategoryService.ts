@@ -343,4 +343,4 @@ export class CategoryService {
 }
 
 // Export singleton instance
-export const categoryService = new CategoryService(new DatabaseService());
+export const categoryService = new CategoryService(DatabaseService.getInstance());

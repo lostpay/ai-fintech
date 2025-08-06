@@ -79,7 +79,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   
   // Database service
-  const [databaseService] = useState(() => new DatabaseService());
+  const databaseService = DatabaseService.getInstance();
   
   // Budget alerts hook
   const { alerts } = useBudgetAlerts();
@@ -174,11 +174,8 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 
     loadCategories();
 
-    // Cleanup
-    return () => {
-      databaseService.close();
-    };
-  }, [databaseService]);
+    // Note: No cleanup needed for singleton database service
+  }, []);
 
   const handleSubmit = async () => {
     await submitForm();

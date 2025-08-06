@@ -13,21 +13,33 @@ import {
 } from '../constants/database';
 import { 
   validateCompleteTransaction, 
-  TransactionFormData,
-  formatValidationErrors
+  TransactionFormData
 } from '../utils/validation';
 import { 
   ErrorHandlingService, 
-  ValidationError, 
-  DatabaseError 
+  ValidationError
 } from './ErrorHandlingService';
-import { emitTransactionChanged, emitBudgetChanged } from '../utils/eventEmitter';
+import { emitTransactionChanged } from '../utils/eventEmitter';
 
 export class DatabaseService {
+  private static instance: DatabaseService;
   private db: SQLite.SQLiteDatabase | null = null;
   private isInitialized = false;
   private categoriesCache: Category[] = [];
   private cacheUpdated = false;
+
+  // Private constructor to prevent direct instantiation
+  private constructor() {}
+
+  /**
+   * Get the singleton instance of DatabaseService
+   */
+  public static getInstance(): DatabaseService {
+    if (!DatabaseService.instance) {
+      DatabaseService.instance = new DatabaseService();
+    }
+    return DatabaseService.instance;
+  }
 
   /**
    * Initialize the database connection and create tables
@@ -1215,6 +1227,40 @@ export class DatabaseService {
     } catch (error) {
       await this.db.execAsync('ROLLBACK;');
       throw error;
+    }
+  }
+
+  /**
+   * Execute a query and return the first result
+   * Safe wrapper for analytics and other services
+   */
+  async getQuery<T>(query: string, params: any[] = []): Promise<T | null> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      await this.initialize();
+      const result = await this.db.getFirstAsync<T>(query, params);
+      return result || null;
+    } catch (error) {
+      console.error('Database query failed:', error);
+      throw new Error(`Database query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute a query and return all results
+   * Safe wrapper for analytics and other services
+   */
+  async getAllQuery<T>(query: string, params: any[] = []): Promise<T[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      await this.initialize();
+      const results = await this.db.getAllAsync<T>(query, params);
+      return Array.isArray(results) ? results : [];
+    } catch (error) {
+      console.error('Database query failed:', error);
+      throw new Error(`Database query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }

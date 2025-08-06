@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { PieChart } from 'react-native-svg-charts';
 import { CategoryPerformance } from '../../types/BudgetAnalytics';
@@ -13,7 +13,6 @@ interface CategoryBreakdownChartProps {
   showLegend?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
 
 export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   data,

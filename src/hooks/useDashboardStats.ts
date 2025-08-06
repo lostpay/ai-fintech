@@ -26,7 +26,7 @@ export const useDashboardStats = (): DashboardStats => {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const databaseService = new DatabaseService();
+  const databaseService = DatabaseService.getInstance();
 
   const calculateDashboardMetrics = async (): Promise<DashboardData> => {
     const currentDate = new Date();
@@ -101,10 +101,7 @@ export const useDashboardStats = (): DashboardStats => {
   useEffect(() => {
     loadDashboardData();
     
-    // Cleanup database connection on unmount
-    return () => {
-      databaseService.close();
-    };
+    // Note: No cleanup needed for singleton database service
   }, [loadDashboardData]);
 
   return {

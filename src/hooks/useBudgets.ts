@@ -27,7 +27,7 @@ interface UseBudgetsReturn {
   refreshBudgets: () => Promise<void>;
 }
 
-const databaseService = new DatabaseService();
+const databaseService = DatabaseService.getInstance();
 
 export const useBudgets = (): UseBudgetsReturn => {
   const [budgets, setBudgets] = useState<BudgetWithDetails[]>([]);

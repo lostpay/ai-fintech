@@ -44,7 +44,7 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
   
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
-  const [databaseService] = useState(() => new DatabaseService());
+  const databaseService = DatabaseService.getInstance();
 
   // Validate form whenever data changes
   useEffect(() => {

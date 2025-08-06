@@ -44,24 +44,6 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
   const budgetedData = chartData.map(d => d.budgeted);
   const spentData = chartData.map(d => d.spent);
 
-  const CusomGrid = ({ x, y, width, height }: any) => (
-    <>
-      {/* Horizontal grid lines */}
-      {[0.2, 0.4, 0.6, 0.8, 1].map((ratio, index) => (
-        <SvgText
-          key={index}
-          x={x(0) - 10}
-          y={y(maxValue * ratio)}
-          fontSize={10}
-          fill={theme.colors.onSurface}
-          alignmentBaseline="middle"
-          textAnchor="end"
-        >
-          {formatCurrency(maxValue * ratio * 100)}
-        </SvgText>
-      ))}
-    </>
-  );
 
   return (
     <View style={styles.container}>

@@ -42,7 +42,7 @@ interface UseBudgetAnalyticsReturn {
 }
 
 // Singleton instances
-const databaseService = new DatabaseService();
+const databaseService = DatabaseService.getInstance();
 const budgetCalculationService = new BudgetCalculationService(databaseService);
 const budgetAnalyticsService = new BudgetAnalyticsService(databaseService, budgetCalculationService);
 
@@ -108,29 +108,30 @@ export const useBudgetAnalytics = (
     return { startDate, endDate };
   }, []);
 
-  // Main analytics loading function
-  const loadAnalytics = useCallback(async (showLoading = true) => {
+  // Main analytics loading function with retry logic
+  const loadAnalytics = useCallback(async (showLoading = true, retryCount = 0) => {
+    const maxRetries = 3;
+    const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
+    
     try {
       if (showLoading) {
         setLoading(true);
       }
       setError(null);
       
+      // Ensure database is initialized before proceeding
+      await databaseService.initialize();
+      
       const { startDate, endDate } = getDateRange(currentPeriod);
       const periodMonths = currentPeriod === '1y' ? 12 : parseInt(currentPeriod);
       
-      // Load all analytics data in parallel
-      const [
-        monthlyData,
-        categoryData,
-        metricsData,
-        trendsData,
-      ] = await Promise.all([
-        budgetAnalyticsService.calculateMonthlyBudgetPerformance(startDate, endDate),
-        budgetAnalyticsService.getCategoryPerformanceAnalysis(periodMonths),
-        budgetAnalyticsService.getBudgetSuccessMetrics(periodMonths),
-        budgetAnalyticsService.calculateSpendingTrends(undefined, periodMonths),
-      ]);
+      // Load analytics data with sequential loading to prevent database connection conflicts
+      console.log(`Loading analytics for period: ${currentPeriod}`);
+      
+      const monthlyData = await budgetAnalyticsService.calculateMonthlyBudgetPerformance(startDate, endDate);
+      const categoryData = await budgetAnalyticsService.getCategoryPerformanceAnalysis(periodMonths);
+      const metricsData = await budgetAnalyticsService.getBudgetSuccessMetrics(periodMonths);
+      const trendsData = await budgetAnalyticsService.calculateSpendingTrends(undefined, periodMonths);
       
       // Generate insights based on monthly performance
       const insightsData = await budgetAnalyticsService.generateInsights(monthlyData);
@@ -143,9 +144,22 @@ export const useBudgetAnalytics = (
       setInsights(insightsData);
       setLastUpdated(new Date());
       
+      console.log('Analytics loaded successfully');
+      
     } catch (err) {
       console.error('Failed to load budget analytics:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load analytics data');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load analytics data';
+      
+      // Retry logic for database connection issues
+      if (retryCount < maxRetries && errorMessage.includes('Database')) {
+        console.log(`Retrying analytics load after error... (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => {
+          loadAnalytics(showLoading, retryCount + 1);
+        }, retryDelay);
+        return;
+      }
+      
+      setError(errorMessage);
     } finally {
       if (showLoading) {
         setLoading(false);
@@ -158,10 +172,13 @@ export const useBudgetAnalytics = (
     await loadAnalytics(true);
   }, [loadAnalytics]);
 
-  // Change analysis period
+  // Change analysis period with debouncing
   const changePeriod = useCallback((newPeriod: '1m' | '3m' | '6m' | '1y') => {
     if (newPeriod !== currentPeriod) {
+      // Clear any existing analytics cache when period changes
+      budgetAnalyticsService.clearCache();
       setCurrentPeriod(newPeriod);
+      setError(null); // Clear any existing errors
     }
   }, [currentPeriod]);
 
@@ -171,10 +188,14 @@ export const useBudgetAnalytics = (
     budgetCalculationService.clearCache();
   }, []);
 
-  // Load analytics on mount and period change
+  // Load analytics on mount and period change with debouncing
   useEffect(() => {
-    loadAnalytics(true);
-  }, [loadAnalytics]);
+    const timeoutId = setTimeout(() => {
+      loadAnalytics(true, 0); // Reset retry count on period change
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [currentPeriod, getDateRange]); // Include getDateRange for completeness
 
   // Auto-refresh setup
   useEffect(() => {

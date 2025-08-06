@@ -320,3 +320,6 @@ export class ErrorHandlingService {
     return obj && obj.error && typeof obj.error.code === 'string' && typeof obj.error.message === 'string';
   }
 }
+
+// Export the isAppError function for external use
+export const isAppError = ErrorHandlingService.isAppError;

@@ -20,15 +20,10 @@ import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { 
   validateCompleteTransaction, 
-  validateAmount, 
-  validateDescription, 
-  validateCategoryId, 
-  validateTransactionDate,
   TransactionFormData,
   formatValidationErrors
 } from '../../utils/validation';
 import { 
-  ErrorHandlingService, 
   ValidationError,
   isAppError
 } from '../../services/ErrorHandlingService';
@@ -69,7 +64,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   submitButtonText = 'Save Expense'
 }) => {
   // Services
-  const [databaseService] = useState(() => new DatabaseService());
+  const databaseService = DatabaseService.getInstance();
   
   // Form state
   const [formData, setFormData] = useState<FormData>({
@@ -111,10 +106,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     initializeForm();
 
-    // Cleanup on unmount
-    return () => {
-      databaseService.close();
-    };
+    // Note: No cleanup needed for singleton database service
   }, []);
 
   /**
@@ -258,7 +250,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       };
 
       // Create transaction through enhanced database service
-      const result = await databaseService.createTransactionWithValidation(transactionData);
+      await databaseService.createTransactionWithValidation(transactionData);
       
       // Success feedback
       const successMessage = `${formData.transaction_type === 'expense' ? 'Expense' : 'Income'} added successfully!`;

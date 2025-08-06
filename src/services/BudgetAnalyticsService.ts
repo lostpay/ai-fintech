@@ -32,8 +32,6 @@ export class BudgetAnalyticsService {
     }
 
     try {
-      await this.databaseService.initialize();
-      
       const months = this.getMonthsInRange(startDate, endDate);
       const results: MonthlyBudgetPerformance[] = [];
 
@@ -41,13 +39,8 @@ export class BudgetAnalyticsService {
         const monthStart = new Date(month + '-01');
         const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
-        // Get all budgets for this month
-        const budgets = await this.databaseService['db']?.getAllAsync<any>(`
-          SELECT b.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-          FROM budgets b
-          JOIN categories c ON b.category_id = c.id
-          WHERE b.period_start <= ? AND b.period_end >= ?
-        `, [monthEnd.toISOString(), monthStart.toISOString()]) || [];
+        // Get all budgets for this month - use proper database service method
+        const budgets = await this.getBudgetsForMonth(monthStart, monthEnd);
 
         let totalBudgeted = 0;
         let totalSpent = 0;
@@ -56,13 +49,7 @@ export class BudgetAnalyticsService {
 
         for (const budget of budgets) {
           // Calculate actual spending for this category in this month
-          const spentResult = await this.databaseService['db']?.getFirstAsync<{ spent_amount: number }>(`
-            SELECT COALESCE(SUM(amount), 0) as spent_amount
-            FROM transactions
-            WHERE category_id = ? AND date >= ? AND date <= ? AND transaction_type = 'expense'
-          `, [budget.category_id, monthStart.toISOString(), monthEnd.toISOString()]);
-
-          const spentAmount = spentResult?.spent_amount || 0;
+          const spentAmount = await this.getMonthlySpending(budget.category_id, monthStart, monthEnd);
           const utilization = budget.amount > 0 ? (spentAmount / budget.amount) * 100 : 0;
 
           totalBudgeted += budget.amount;
@@ -137,8 +124,6 @@ export class BudgetAnalyticsService {
     }
 
     try {
-      await this.databaseService.initialize();
-      
       const endDate = new Date();
       const startDate = new Date();
       startDate.setMonth(endDate.getMonth() - periodMonths);
@@ -162,7 +147,7 @@ export class BudgetAnalyticsService {
           ? [categoryId, monthStart.toISOString(), monthEnd.toISOString()]
           : [monthStart.toISOString(), monthEnd.toISOString()];
 
-        const result = await this.databaseService['db']?.getFirstAsync<{ total: number }>(query, params);
+        const result = await this.executeQuery<{ total: number }>(query, params, 'first') as { total: number } | null;
         const amount = result?.total || 0;
 
         // Calculate change from previous month
@@ -443,15 +428,21 @@ export class BudgetAnalyticsService {
     return 'stable';
   }
 
-  private async getMonthlySpending(categoryId: number, month: Date): Promise<number> {
-    const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
-    const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  private async getMonthlySpending(categoryId: number, monthStart: Date, monthEnd?: Date): Promise<number> {
+    // If monthEnd is not provided, calculate it from monthStart
+    if (!monthEnd) {
+      const month = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+      monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+      monthStart = month;
+    }
 
-    const result = await this.databaseService['db']?.getFirstAsync<{ total: number }>(`
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM transactions
-      WHERE category_id = ? AND date >= ? AND date <= ? AND transaction_type = 'expense'
-    `, [categoryId, monthStart.toISOString(), monthEnd.toISOString()]);
+    const result = await this.executeQuery<{ total: number }>(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM transactions
+       WHERE category_id = ? AND date >= ? AND date <= ? AND transaction_type = 'expense'`,
+      [categoryId, monthStart.toISOString().split('T')[0], monthEnd.toISOString().split('T')[0]],
+      'first'
+    ) as { total: number } | null;
 
     return result?.total || 0;
   }
@@ -495,5 +486,69 @@ export class BudgetAnalyticsService {
     }
 
     return recommendations;
+  }
+
+  // ========== DATABASE HELPER METHODS ==========
+
+  /**
+   * Execute database queries safely with proper error handling and retry logic
+   */
+  private async executeQuery<T>(
+    query: string, 
+    params: any[], 
+    type: 'first' | 'all' = 'all',
+    retryCount = 0
+  ): Promise<T | T[] | null> {
+    const maxRetries = 3;
+    const baseDelay = 200;
+    
+    try {
+      // Ensure database is initialized before each query
+      await this.databaseService.initialize();
+      
+      // Add a small delay to prevent rapid consecutive calls
+      if (retryCount > 0) {
+        const delay = baseDelay * Math.pow(2, retryCount - 1); // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      if (type === 'first') {
+        return await this.databaseService.getQuery<T>(query, params);
+      } else {
+        return await this.databaseService.getAllQuery<T>(query, params);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Database query failed:', errorMessage);
+      
+      // Retry for connection-related errors
+      if (retryCount < maxRetries && (
+        errorMessage.includes('NullPointerException') ||
+        errorMessage.includes('prepareAsync') ||
+        errorMessage.includes('Database not connected') ||
+        errorMessage.includes('connection')
+      )) {
+        console.log(`Retrying database query... (attempt ${retryCount + 1}/${maxRetries})`);
+        return this.executeQuery<T>(query, params, type, retryCount + 1);
+      }
+      
+      throw new Error(`Database query failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Get budgets for a specific month with category information
+   */
+  private async getBudgetsForMonth(monthStart: Date, monthEnd: Date): Promise<any[]> {
+    const budgets = await this.executeQuery<any>(
+      `SELECT b.*, c.name as category_name, c.color as category_color, c.icon as category_icon
+       FROM budgets b
+       JOIN categories c ON b.category_id = c.id
+       WHERE b.period_start <= ? AND b.period_end >= ?`,
+      [monthEnd.toISOString().split('T')[0], monthStart.toISOString().split('T')[0]],
+      'all'
+    );
+
+    return Array.isArray(budgets) ? budgets : [];
   }
 }
