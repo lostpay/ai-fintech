@@ -85,6 +85,7 @@ export const BUDGET_EVENTS = {
   TRANSACTION_CHANGED: 'transactionChanged',
   BUDGET_CHANGED: 'budgetChanged',
   CATEGORY_CHANGED: 'categoryChanged',
+  BUDGET_ALERTS_UPDATED: 'budgetAlertsUpdated',
 } as const;
 
 // Event data interfaces
@@ -109,6 +110,12 @@ export interface CategoryChangedData {
   category?: any; // Full category data for real-time updates
 }
 
+export interface BudgetAlertsUpdatedData {
+  alerts: any[]; // BudgetAlert[] - using any to avoid circular import
+  transactionId?: number; // The transaction that triggered the alerts
+  categoryId?: number; // The category affected
+}
+
 // Helper functions for emitting specific events
 export const emitTransactionChanged = (data: TransactionChangedData): void => {
   eventEmitter.emit(BUDGET_EVENTS.TRANSACTION_CHANGED, data);
@@ -120,6 +127,10 @@ export const emitBudgetChanged = (data: BudgetChangedData): void => {
 
 export const emitCategoryChanged = (data: CategoryChangedData): void => {
   eventEmitter.emit(BUDGET_EVENTS.CATEGORY_CHANGED, data);
+};
+
+export const emitBudgetAlertsUpdated = (data: BudgetAlertsUpdatedData): void => {
+  eventEmitter.emit(BUDGET_EVENTS.BUDGET_ALERTS_UPDATED, data);
 };
 
 // Helper functions for subscribing to specific events with type safety
@@ -135,6 +146,10 @@ export const onCategoryChanged = (callback: (data: CategoryChangedData) => void)
   eventEmitter.on(BUDGET_EVENTS.CATEGORY_CHANGED, callback);
 };
 
+export const onBudgetAlertsUpdated = (callback: (data: BudgetAlertsUpdatedData) => void): void => {
+  eventEmitter.on(BUDGET_EVENTS.BUDGET_ALERTS_UPDATED, callback);
+};
+
 // Helper functions for unsubscribing
 export const offTransactionChanged = (callback: (data: TransactionChangedData) => void): void => {
   eventEmitter.off(BUDGET_EVENTS.TRANSACTION_CHANGED, callback);
@@ -146,6 +161,10 @@ export const offBudgetChanged = (callback: (data: BudgetChangedData) => void): v
 
 export const offCategoryChanged = (callback: (data: CategoryChangedData) => void): void => {
   eventEmitter.off(BUDGET_EVENTS.CATEGORY_CHANGED, callback);
+};
+
+export const offBudgetAlertsUpdated = (callback: (data: BudgetAlertsUpdatedData) => void): void => {
+  eventEmitter.off(BUDGET_EVENTS.BUDGET_ALERTS_UPDATED, callback);
 };
 
 export default eventEmitter;

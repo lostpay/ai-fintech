@@ -10,6 +10,7 @@ import { RecentTransactionsList } from '../components/lists/RecentTransactionsLi
 import { LoadingState } from '../components/common/LoadingState';
 import { EmptyDashboard } from '../components/common/EmptyDashboard';
 import { BudgetSummary } from '../components/common/BudgetSummary';
+import { BudgetAlertBanner } from '../components/dashboard/BudgetAlertBanner';
 import { useTheme } from '../context/ThemeContext';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
@@ -86,6 +87,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           totalSpent={dashboardData.totalSpentThisMonth}
           loading={loading}
         />
+
+        {/* Budget Alert Banner */}
+        <BudgetAlertBanner maxAlertsToShow={2} />
 
         {/* Quick Stats Cards */}
         <QuickStatsCard

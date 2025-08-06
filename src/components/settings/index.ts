@@ -2,3 +2,4 @@ export { SettingsListItem, ThemeToggleItem, DataExportItem, CategoryManagementIt
 export { SettingsSection } from './SettingsSection';
 export { AppInfoSection } from './AppInfoSection';
 export { AboutSection } from './AboutSection';
+export { AlertSettings, getAlertPreferences } from './AlertSettings';

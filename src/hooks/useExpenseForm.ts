@@ -11,6 +11,7 @@ import {
   validateExpenseForm, 
   hasValidationErrors 
 } from '../utils/formValidation';
+import { emitTransactionChanged } from '../utils/eventEmitter';
 
 interface UseExpenseFormOptions {
   onSuccess?: (message: string) => void;
@@ -61,6 +62,14 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
                  formData.date !== undefined;
 
   /**
+   * Reset form to initial state
+   */
+  const resetForm = useCallback(() => {
+    setFormData({ date: new Date() });
+    setErrors({});
+  }, []);
+
+  /**
    * Update a single form field
    */
   const updateField = useCallback((field: keyof ExpenseFormData, value: any) => {
@@ -106,7 +115,15 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
         date: formData.date!,
       };
 
-      await databaseService.createTransaction(transactionData);
+      const transaction = await databaseService.createTransaction(transactionData);
+      
+      // Emit transaction changed event for budget alerts
+      emitTransactionChanged({
+        type: 'created',
+        transactionId: transaction.id,
+        categoryId: transactionData.category_id,
+        amount: transactionData.amount
+      });
       
       // Success - reset form
       resetForm();
@@ -129,14 +146,6 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
       setLoading(false);
     }
   }, [formData, validateForm, onSuccess, onError, databaseService, resetForm]);
-
-  /**
-   * Reset form to initial state
-   */
-  const resetForm = useCallback(() => {
-    setFormData({ date: new Date() });
-    setErrors({});
-  }, []);
 
   return {
     formData,

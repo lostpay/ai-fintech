@@ -3,7 +3,7 @@
  * Implements Story 2.3 requirements for Material Design expense form
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   ScrollView, 
@@ -13,7 +13,8 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Animated
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -26,9 +27,12 @@ import DatePickerInput from '../components/forms/DatePickerInput';
 
 // Hooks and Services
 import { useExpenseForm } from '../hooks/useExpenseForm';
+import { useBudgetAlerts } from '../hooks/useBudgetAlerts';
 import { DatabaseService } from '../services/DatabaseService';
 import { Category } from '../types/Category';
+import { BudgetAlert as BudgetAlertType } from '../types/BudgetAlert';
 import { useTheme } from '../context/ThemeContext';
+import { BudgetAlert } from '../components/alerts/BudgetAlert';
 
 // Success Feedback Component
 interface SuccessFeedbackProps {
@@ -65,8 +69,20 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const [successVisible, setSuccessVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   
+  // Budget alerts state
+  const [showAlerts, setShowAlerts] = useState(false);
+  const [currentAlerts, setCurrentAlerts] = useState<BudgetAlertType[]>([]);
+  
+  // Animation values for alerts overlay
+  const slideUpAnim = useRef(new Animated.Value(500)).current;
+  const fadeInAnim = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  
   // Database service
   const [databaseService] = useState(() => new DatabaseService());
+  
+  // Budget alerts hook
+  const { alerts } = useBudgetAlerts();
   
   // Form hook with success/error handlers
   const {
@@ -93,6 +109,55 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   });
 
   // Load categories on mount
+  // Watch for new alerts after expense submission
+  useEffect(() => {
+    // Get the most recent alerts (they will be ordered by created_at)
+    const recentAlerts = alerts.slice(-3); // Show up to 3 most recent alerts
+    
+    if (recentAlerts.length > 0 && !loading) {
+      // Only show alerts if we're not currently showing success message
+      // and there are new alerts that weren't already shown
+      const newAlerts = recentAlerts.filter(alert => 
+        !currentAlerts.find(existing => existing.id === alert.id)
+      );
+      
+      if (newAlerts.length > 0) {
+        setCurrentAlerts(newAlerts);
+        setShowAlerts(true);
+        
+        // Animate alerts in
+        Animated.parallel([
+          Animated.timing(slideUpAnim, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeInAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(backdropOpacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+        
+        // Auto-hide alerts after 5 seconds unless they're critical
+        const hasError = newAlerts.some(alert => alert.severity === 'error');
+        if (!hasError) {
+          setTimeout(() => {
+            animateAlertsOut(() => {
+              setShowAlerts(false);
+              setCurrentAlerts([]);
+            });
+          }, 5000);
+        }
+      }
+    }
+  }, [alerts, loading, currentAlerts, slideUpAnim, fadeInAnim, backdropOpacity]);
+
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -118,6 +183,78 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const handleSubmit = async () => {
     await submitForm();
     // Success/error handling is done in the hook callbacks
+  };
+
+  const animateAlertsOut = (callback?: () => void) => {
+    Animated.parallel([
+      Animated.timing(slideUpAnim, {
+        toValue: 500,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeInAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Reset animation values for next time
+      slideUpAnim.setValue(500);
+      fadeInAnim.setValue(0);
+      backdropOpacity.setValue(0);
+      callback?.();
+    });
+  };
+
+  const handleAlertAction = (action: string) => {
+    // Animate out before navigation
+    animateAlertsOut(() => {
+      setShowAlerts(false);
+      setCurrentAlerts([]);
+      
+      // Handle different alert actions
+      switch (action) {
+        case 'view_budget':
+          navigation.navigate('Budget' as never);
+          break;
+        case 'review_overspending':
+        case 'review_budget_details':
+          navigation.navigate('Budget' as never);
+          break;
+        case 'view_recent_transactions':
+          navigation.navigate('History' as never);
+          break;
+        default:
+          // Default action - navigate to budget screen
+          navigation.navigate('Budget' as never);
+          break;
+      }
+    });
+  };
+
+  const handleDismissAlert = (alertId: string) => {
+    // Remove the specific alert from current alerts
+    setCurrentAlerts(prev => prev.filter(alert => alert.id !== alertId));
+    
+    // If no more alerts, animate out and hide the alert container
+    if (currentAlerts.length <= 1) {
+      animateAlertsOut(() => {
+        setShowAlerts(false);
+        setCurrentAlerts([]);
+      });
+    }
+  };
+
+  const handleDismissAllAlerts = () => {
+    animateAlertsOut(() => {
+      setShowAlerts(false);
+      setCurrentAlerts([]);
+    });
   };
 
   if (loadingCategories) {
@@ -219,6 +356,57 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Budget Alerts Display */}
+      {showAlerts && currentAlerts.length > 0 && !successVisible && (
+        <Animated.View 
+          style={[
+            styles.alertsOverlay,
+            { opacity: backdropOpacity }
+          ]}
+        >
+          <Animated.View 
+            style={[
+              styles.alertsContainer,
+              {
+                transform: [{ translateY: slideUpAnim }],
+                opacity: fadeInAnim,
+              }
+            ]}
+          >
+            <View style={styles.alertsHeader}>
+              <Text style={[styles.alertsTitle, { color: theme.colors.onSurface }]}>
+                Budget Impact
+              </Text>
+              <TouchableOpacity
+                onPress={handleDismissAllAlerts}
+                style={styles.dismissAllButton}
+                testID="dismiss-all-alerts"
+              >
+                <Text style={[styles.dismissAllText, { color: theme.colors.primary }]}>
+                  Dismiss All
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView 
+              style={styles.alertsList}
+              showsVerticalScrollIndicator={false}
+            >
+              {currentAlerts.map((alert, index) => (
+                <BudgetAlert
+                  key={alert.id}
+                  alert={alert}
+                  variant="compact"
+                  animateIn={true}
+                  onAction={handleAlertAction}
+                  onDismiss={() => handleDismissAlert(alert.id)}
+                />
+              ))}
+            </ScrollView>
+          </Animated.View>
+        </Animated.View>
+      )}
 
       {/* Success Feedback Overlay */}
       <SuccessFeedback
@@ -385,6 +573,58 @@ const styles = StyleSheet.create({
     color: '#212121',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  
+  // Budget Alerts Overlay
+  alertsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+    zIndex: 999,
+  },
+  alertsContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '70%',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  alertsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  alertsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    // color will be applied dynamically via theme
+  },
+  dismissAllButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dismissAllText: {
+    fontSize: 14,
+    fontWeight: '500',
+    // color will be applied dynamically via theme
+  },
+  alertsList: {
+    maxHeight: 400,
   },
 });
 
