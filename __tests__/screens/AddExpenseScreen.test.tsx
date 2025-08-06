@@ -47,8 +47,8 @@ jest.mock('@react-native-community/datetimepicker', () => {
 const MockedDatabaseService = DatabaseService as jest.MockedClass<typeof DatabaseService>;
 
 const mockCategories = [
-  { id: 1, name: 'Dining', color: '#FF9800', icon: 'restaurant', is_default: true, created_at: new Date() },
-  { id: 2, name: 'Transport', color: '#2196F3', icon: 'directions-car', is_default: true, created_at: new Date() },
+  { id: 1, name: 'Dining', color: '#FF9800', icon: 'restaurant', is_default: true, is_hidden: false, created_at: new Date(), updated_at: new Date() },
+  { id: 2, name: 'Transport', color: '#2196F3', icon: 'directions-car', is_default: true, is_hidden: false, created_at: new Date(), updated_at: new Date() },
 ];
 
 // Wrapper component for navigation context

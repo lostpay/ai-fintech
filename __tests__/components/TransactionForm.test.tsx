@@ -38,9 +38,9 @@ const mockUseCategories = useCategories as jest.MockedFunction<typeof useCategor
 const mockUseTransactions = useTransactions as jest.MockedFunction<typeof useTransactions>;
 
 const mockCategories = [
-  { id: 1, name: 'Food', color: '#FF9800', icon: 'restaurant', is_default: true, created_at: new Date() },
-  { id: 2, name: 'Transport', color: '#2196F3', icon: 'directions-car', is_default: true, created_at: new Date() },
-  { id: 3, name: 'Shopping', color: '#4CAF50', icon: 'shopping-cart', is_default: true, created_at: new Date() },
+  { id: 1, name: 'Food', color: '#FF9800', icon: 'restaurant', is_default: true, is_hidden: false, created_at: new Date(), updated_at: new Date() },
+  { id: 2, name: 'Transport', color: '#2196F3', icon: 'directions-car', is_default: true, is_hidden: false, created_at: new Date(), updated_at: new Date() },
+  { id: 3, name: 'Shopping', color: '#4CAF50', icon: 'shopping-cart', is_default: true, is_hidden: false, created_at: new Date(), updated_at: new Date() },
 ];
 
 describe('TransactionForm', () => {

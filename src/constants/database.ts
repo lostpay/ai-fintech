@@ -23,7 +23,9 @@ export const CREATE_TABLES_SQL = {
       color TEXT NOT NULL,
       icon TEXT NOT NULL,
       is_default BOOLEAN NOT NULL DEFAULT 0,
+      is_hidden BOOLEAN NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       
       CHECK (length(name) > 0 AND length(name) <= 50),
       CHECK (color LIKE '#%' AND length(color) = 7),
@@ -92,9 +94,18 @@ export const CREATE_INDEXES_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date DESC);',
   'CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(transaction_type, date);',
   'CREATE INDEX IF NOT EXISTS idx_budgets_category_period ON budgets(category_id, period_start, period_end);',
+  'CREATE INDEX IF NOT EXISTS idx_categories_visibility ON categories(is_default, is_hidden);',
+  'CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);',
 ];
 
 export const CREATE_TRIGGERS_SQL = [
+  `
+    CREATE TRIGGER IF NOT EXISTS update_categories_timestamp 
+    AFTER UPDATE ON categories
+    BEGIN
+      UPDATE categories SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `,
   `
     CREATE TRIGGER IF NOT EXISTS update_transactions_timestamp 
     AFTER UPDATE ON transactions

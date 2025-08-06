@@ -3,12 +3,23 @@
  * Defines TypeScript types for React Navigation to ensure type-safe navigation
  */
 
+import type { Category } from '../types/Category';
+
 export type RootTabParamList = {
   Home: undefined;
   Add: undefined;
   Budget: undefined;
   History: undefined;
   Settings: undefined;
+};
+
+export type RootStackParamList = {
+  Main: undefined;
+  Categories: undefined;
+  CategoryForm: { 
+    mode: 'create' | 'edit'; 
+    category?: Category 
+  };
 };
 
 // Helper type for screens props
@@ -31,10 +42,11 @@ export type NavigationState = {
 
 // Screen parameter types for type-safe navigation
 export type TabScreenNames = keyof RootTabParamList;
+export type StackScreenNames = keyof RootStackParamList;
 
 // Type for navigation prop in components
 export type NavigationProp = {
-  navigate: (screen: TabScreenNames, params?: any) => void;
+  navigate: (screen: TabScreenNames | StackScreenNames, params?: any) => void;
   goBack: () => void;
   canGoBack: () => boolean;
   reset: (state: any) => void;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Platform, BackHandler } from 'react-native';
@@ -12,13 +13,118 @@ import {
   AddExpenseScreen, 
   BudgetScreen,
   HistoryScreen, 
-  SettingsScreen 
+  SettingsScreen,
+  CategoriesScreen 
 } from '../screens';
+import { CategoryFormScreen } from '../screens/CategoryFormScreen';
 
 // Import types
-import type { RootTabParamList } from './types';
+import type { RootTabParamList, RootStackParamList } from './types';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const Stack = createStackNavigator<RootStackParamList>();
+
+// Main Tab Navigator Component
+const MainTabNavigator: React.FC = () => {
+  const { theme } = useTheme();
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.outline,
+          borderTopWidth: 1,
+          height: Platform.OS === 'ios' ? 100 : 75,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 15,
+          paddingTop: 12,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
+        },
+        headerShown: false, // Hide headers for clean tab navigation
+      }}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons 
+              name="home" 
+              size={size} 
+              color={color} 
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Add"
+        component={AddExpenseScreen}
+        options={{
+          title: 'Add',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons 
+              name="add-circle" 
+              size={size} 
+              color={color} 
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Budget"
+        component={BudgetScreen}
+        options={{
+          title: 'Budget',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons 
+              name="account-balance-wallet" 
+              size={size} 
+              color={color} 
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HistoryScreen}
+        options={{
+          title: 'History',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons 
+              name="history" 
+              size={size} 
+              color={color} 
+            />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons 
+              name="settings" 
+              size={size} 
+              color={color} 
+            />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
 export const AppNavigator: React.FC = () => {
   const { theme, isDarkMode } = useTheme();
@@ -84,100 +190,47 @@ export const AppNavigator: React.FC = () => {
         style={isDarkMode ? 'light' : 'dark'}
         backgroundColor={theme.colors.surface}
       />
-      <Tab.Navigator
+      <Stack.Navigator
         screenOptions={{
-          tabBarActiveTintColor: theme.colors.primary,
-          tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
-          tabBarStyle: {
-            backgroundColor: theme.colors.surface,
-            borderTopColor: theme.colors.outline,
-            borderTopWidth: 1,
-            height: Platform.OS === 'ios' ? 100 : 75,
-            paddingBottom: Platform.OS === 'ios' ? 25 : 15,
-            paddingTop: 12,
-          },
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '600',
-            marginTop: 2,
-          },
-          tabBarIconStyle: {
-            marginTop: 2,
-          },
-          headerShown: false, // Hide headers for clean tab navigation
+          headerShown: false,
+          cardStyle: { backgroundColor: theme.colors.background },
         }}
       >
-        <Tab.Screen
-          name="Home"
-          component={HomeScreen}
+        <Stack.Screen 
+          name="Main" 
+          component={MainTabNavigator} 
+        />
+        <Stack.Screen 
+          name="Categories" 
+          component={CategoriesScreen}
           options={{
-            title: 'Home',
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons 
-                name="home" 
-                size={size} 
-                color={color} 
-              />
-            ),
+            headerShown: true,
+            presentation: 'modal',
+            headerStyle: {
+              backgroundColor: theme.colors.surface,
+            },
+            headerTintColor: theme.colors.onSurface,
+            headerTitleStyle: {
+              color: theme.colors.onSurface,
+            },
           }}
         />
-        <Tab.Screen
-          name="Add"
-          component={AddExpenseScreen}
+        <Stack.Screen 
+          name="CategoryForm" 
+          component={CategoryFormScreen}
           options={{
-            title: 'Add',
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons 
-                name="add-circle" 
-                size={size} 
-                color={color} 
-              />
-            ),
+            headerShown: true,
+            presentation: 'modal',
+            headerStyle: {
+              backgroundColor: theme.colors.surface,
+            },
+            headerTintColor: theme.colors.onSurface,
+            headerTitleStyle: {
+              color: theme.colors.onSurface,
+            },
           }}
         />
-        <Tab.Screen
-          name="Budget"
-          component={BudgetScreen}
-          options={{
-            title: 'Budget',
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons 
-                name="account-balance-wallet" 
-                size={size} 
-                color={color} 
-              />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="History"
-          component={HistoryScreen}
-          options={{
-            title: 'History',
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons 
-                name="history" 
-                size={size} 
-                color={color} 
-              />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons 
-                name="settings" 
-                size={size} 
-                color={color} 
-              />
-            ),
-          }}
-        />
-      </Tab.Navigator>
+      </Stack.Navigator>
     </NavigationContainer>
   );
 };

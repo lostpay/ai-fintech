@@ -88,6 +88,23 @@ export const DataExportItem: React.FC<DataExportItemProps> = ({
   />
 );
 
+interface CategoryManagementItemProps {
+  onPress: () => void;
+}
+
+export const CategoryManagementItem: React.FC<CategoryManagementItemProps> = ({
+  onPress,
+}) => (
+  <SettingsListItem
+    title="Manage Categories"
+    description="Customize your expense categories with colors and icons"
+    icon="category"
+    onPress={onPress}
+    testID="category-management-item"
+    right={<List.Icon icon="chevron-right" />}
+  />
+);
+
 const styles = StyleSheet.create({
   listItem: {
     paddingVertical: 8,

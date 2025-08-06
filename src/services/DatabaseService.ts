@@ -5,6 +5,7 @@ import { Budget, CreateBudgetRequest } from '../types/Budget';
 import { Goal, CreateGoalRequest } from '../types/Goal';
 import { 
   DATABASE_NAME, 
+  DATABASE_VERSION,
   DEFAULT_CATEGORIES, 
   CREATE_TABLES_SQL, 
   CREATE_INDEXES_SQL,
@@ -43,6 +44,9 @@ export class DatabaseService {
       // Enable foreign key constraints
       await this.db.execAsync('PRAGMA foreign_keys = ON;');
       
+      // Run database migrations for schema updates
+      await this.runMigrations();
+      
       // Create tables
       await this.createTables();
       
@@ -63,6 +67,51 @@ export class DatabaseService {
     } catch (error) {
       console.error('Database initialization failed:', error);
       throw new Error(`Database initialization failed: ${error}`);
+    }
+  }
+
+  /**
+   * Run database migrations for schema updates
+   */
+  private async runMigrations(): Promise<void> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      // Get current schema version
+      let currentVersion = 0;
+      try {
+        const result = await this.db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+        currentVersion = result?.user_version || 0;
+      } catch (error) {
+        console.log('No schema version found, assuming new database');
+      }
+      
+      console.log(`Current database version: ${currentVersion}, target version: ${DATABASE_VERSION}`);
+      
+      // Migration 1: Add is_hidden column to categories if it doesn't exist
+      if (currentVersion < 1) {
+        try {
+          // Check if is_hidden column exists
+          const tableInfo = await this.db.getAllAsync<any>('PRAGMA table_info(categories)');
+          const hasIsHidden = tableInfo.some(column => column.name === 'is_hidden');
+          
+          if (!hasIsHidden) {
+            console.log('Adding is_hidden column to categories table');
+            await this.db.execAsync('ALTER TABLE categories ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0');
+          }
+        } catch (error) {
+          // Table might not exist yet, that's fine
+          console.log('Categories table does not exist yet, will be created with is_hidden column');
+        }
+        
+        // Update schema version
+        await this.db.execAsync('PRAGMA user_version = 1');
+        console.log('Migration to version 1 completed');
+      }
+      
+    } catch (error) {
+      console.error('Migration failed:', error);
+      throw error;
     }
   }
 
@@ -151,7 +200,9 @@ export class DatabaseService {
       this.categoriesCache = categories.map(cat => ({
         ...cat,
         created_at: new Date(cat.created_at),
-        is_default: Boolean(cat.is_default)
+        updated_at: new Date(cat.updated_at),
+        is_default: Boolean(cat.is_default),
+        is_hidden: Boolean(cat.is_hidden)
       }));
       this.cacheUpdated = true;
     } catch (error) {
@@ -205,8 +256,14 @@ export class DatabaseService {
     
     try {
       const result = await this.db.runAsync(
-        'INSERT INTO categories (name, color, icon, is_default) VALUES (?, ?, ?, ?)',
-        [categoryData.name, categoryData.color, categoryData.icon, categoryData.is_default || false]
+        'INSERT INTO categories (name, color, icon, is_default, is_hidden) VALUES (?, ?, ?, ?, ?)',
+        [
+          categoryData.name, 
+          categoryData.color, 
+          categoryData.icon, 
+          categoryData.is_default || false,
+          categoryData.is_hidden || false
+        ]
       );
       
       const category = await this.db.getFirstAsync<Category>(
@@ -890,7 +947,9 @@ export class DatabaseService {
     return {
       ...category,
       created_at: new Date(category.created_at),
-      is_default: Boolean(category.is_default)
+      updated_at: new Date(category.updated_at),
+      is_default: Boolean(category.is_default),
+      is_hidden: Boolean(category.is_hidden)
     };
   }
 

@@ -1,11 +1,14 @@
 /**
  * CategoryChipSelector Component - Material Design 3 Category Selection
  * Implements Story 2.3 requirements for horizontal scrollable category chips
+ * Updated for Story 3.3 - Enhanced category system with colors and icons
  */
 
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Category } from '../../types/Category';
+import { useTheme } from '../../context/ThemeContext';
 
 interface CategoryChipSelectorProps {
   categories: Category[];
@@ -22,27 +25,17 @@ const CategoryChipSelector: React.FC<CategoryChipSelectorProps> = ({
   error,
   testID = 'category-chip-selector'
 }) => {
-  const renderCategoryIcon = (iconName: string) => {
-    // Simple icon mapping - in a real app, you'd use a proper icon library
-    const iconMap: { [key: string]: string } = {
-      'restaurant': '🍽️',
-      'directions-car': '🚗',
-      'home': '🏠',
-      'shopping-cart': '🛒',
-      'local-hospital': '🏥',
-      'school': '📚',
-      'entertainment': '🎬',
-      'fitness': '💪',
-      'default': '📋'
-    };
-    
-    return iconMap[iconName] || iconMap.default;
-  };
+  const { theme } = useTheme();
+
+  // Filter out hidden default categories
+  const visibleCategories = categories.filter(category => 
+    !category.is_default || !category.is_hidden
+  );
 
   return (
     <View style={styles.container} testID={testID}>
       {/* Label */}
-      <Text style={[styles.label, error && styles.labelError]}>
+      <Text style={[styles.label, { color: theme.colors.onSurface }, error && { color: theme.colors.error }]}>
         Category
       </Text>
       
@@ -54,16 +47,27 @@ const CategoryChipSelector: React.FC<CategoryChipSelectorProps> = ({
         style={styles.scrollView}
       >
         <View style={styles.chipContainer}>
-          {categories.map((category) => {
+          {visibleCategories.map((category) => {
             const isSelected = selectedCategoryId === category.id;
+            const chipBackgroundColor = isSelected 
+              ? category.color 
+              : theme.colors.surfaceVariant;
+            const chipBorderColor = isSelected 
+              ? category.color 
+              : theme.colors.outline;
+            const iconColor = isSelected ? '#FFFFFF' : theme.colors.onSurfaceVariant;
+            const textColor = isSelected ? '#FFFFFF' : theme.colors.onSurfaceVariant;
             
             return (
               <TouchableOpacity
                 key={category.id}
                 style={[
                   styles.chip,
+                  {
+                    backgroundColor: chipBackgroundColor,
+                    borderColor: chipBorderColor,
+                  },
                   isSelected && styles.chipSelected,
-                  isSelected && { backgroundColor: category.color || '#1976D2' }
                 ]}
                 onPress={() => onCategorySelect(category.id)}
                 testID={`category-chip-${category.id}`}
@@ -72,17 +76,17 @@ const CategoryChipSelector: React.FC<CategoryChipSelectorProps> = ({
                 accessibilityState={{ selected: isSelected }}
               >
                 {/* Category Icon */}
-                <Text style={[
-                  styles.chipIcon,
-                  isSelected && styles.chipIconSelected
-                ]}>
-                  {renderCategoryIcon(category.icon || 'default')}
-                </Text>
+                <MaterialIcons
+                  name={category.icon as any}
+                  size={18}
+                  color={iconColor}
+                  style={styles.chipIcon}
+                />
                 
                 {/* Category Name */}
                 <Text style={[
                   styles.chipText,
-                  isSelected && styles.chipTextSelected
+                  { color: textColor }
                 ]}>
                   {category.name}
                 </Text>
@@ -94,12 +98,14 @@ const CategoryChipSelector: React.FC<CategoryChipSelectorProps> = ({
       
       {/* Error Message */}
       {error && (
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
       )}
       
       {/* Helper Text */}
       {!error && (
-        <Text style={styles.helperText}>Select a category for your expense</Text>
+        <Text style={[styles.helperText, { color: theme.colors.onSurfaceVariant }]}>
+          Select a category for your expense
+        </Text>
       )}
     </View>
   );
@@ -112,12 +118,8 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#424242',
     marginBottom: 8,
     marginLeft: 4,
-  },
-  labelError: {
-    color: '#D32F2F',
   },
   scrollView: {
     marginHorizontal: -4, // Offset container padding
@@ -133,9 +135,7 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -143,8 +143,6 @@ const styles = StyleSheet.create({
     minWidth: 48,
   },
   chipSelected: {
-    backgroundColor: '#1976D2',
-    borderColor: '#1976D2',
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -152,30 +150,19 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   chipIcon: {
-    fontSize: 16,
     marginRight: 6,
-  },
-  chipIconSelected: {
-    // Icon color doesn't change since we're using emojis
   },
   chipText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#424242',
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
   },
   errorText: {
     fontSize: 12,
-    color: '#D32F2F',
     marginTop: 4,
     marginLeft: 4,
   },
   helperText: {
     fontSize: 12,
-    color: '#6B7280',
     marginTop: 4,
     marginLeft: 4,
   },

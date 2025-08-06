@@ -7,16 +7,19 @@ import {
   SettingsSection, 
   ThemeToggleItem, 
   DataExportItem, 
+  CategoryManagementItem,
   AppInfoSection, 
   AboutSection 
 } from '../components/settings';
 import { useTheme } from '../context/ThemeContext';
 import { dataExportService } from '../services';
+import { useNavigation } from '@react-navigation/native';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Settings'>;
 
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, isDarkMode, toggleTheme } = useTheme();
+  const stackNavigation = useNavigation();
   const [isExporting, setIsExporting] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -24,6 +27,11 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     // Screen initialization placeholder
   }, []);
+
+  const handleManageCategories = () => {
+    // Navigate to the Categories screen using the stack navigator
+    stackNavigation.navigate('Categories' as never);
+  };
 
   const handleExportData = async () => {
     setIsExporting(true);
@@ -68,6 +76,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Data Management Section */}
         <SettingsSection title="Data Management">
+          <CategoryManagementItem onPress={handleManageCategories} />
           <DataExportItem
             onExport={handleExportData}
             isExporting={isExporting}

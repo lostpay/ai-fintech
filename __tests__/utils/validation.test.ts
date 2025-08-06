@@ -23,7 +23,9 @@ const mockCategories: Category[] = [
     color: '#FF5722',
     icon: 'restaurant',
     is_default: true,
-    created_at: new Date('2024-01-01T00:00:00.000Z')
+    is_hidden: false,
+    created_at: new Date('2024-01-01T00:00:00.000Z'),
+    updated_at: new Date('2024-01-01T00:00:00.000Z')
   },
   {
     id: 2,
@@ -31,7 +33,9 @@ const mockCategories: Category[] = [
     color: '#2196F3',
     icon: 'directions-car',
     is_default: true,
-    created_at: new Date('2024-01-01T00:00:00.000Z')
+    is_hidden: false,
+    created_at: new Date('2024-01-01T00:00:00.000Z'),
+    updated_at: new Date('2024-01-01T00:00:00.000Z')
   },
   {
     id: 3,
@@ -39,7 +43,9 @@ const mockCategories: Category[] = [
     color: '#8BC34A',
     icon: 'attach-money',
     is_default: true,
-    created_at: new Date('2024-01-01T00:00:00.000Z')
+    is_hidden: false,
+    created_at: new Date('2024-01-01T00:00:00.000Z'),
+    updated_at: new Date('2024-01-01T00:00:00.000Z')
   }
 ];
 

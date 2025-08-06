@@ -104,9 +104,9 @@ export interface BudgetChangedData {
 }
 
 export interface CategoryChangedData {
-  type: 'created' | 'updated' | 'deleted';
+  type: 'created' | 'updated' | 'deleted' | 'hidden' | 'shown';
   categoryId: number;
-  name?: string;
+  category?: any; // Full category data for real-time updates
 }
 
 // Helper functions for emitting specific events
