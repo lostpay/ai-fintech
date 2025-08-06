@@ -3,6 +3,7 @@ import { DatabaseService } from './DatabaseService';
 import { DataExportService } from './DataExportService';
 import { BudgetCalculationService } from './BudgetCalculationService';
 import { BudgetAlertService } from './BudgetAlertService';
+import { BudgetAnalyticsService } from './BudgetAnalyticsService';
 
 // Create a singleton instance of DatabaseService
 export const databaseService = new DatabaseService();
@@ -16,5 +17,14 @@ export const budgetCalculationService = new BudgetCalculationService(databaseSer
 // Create a singleton instance of BudgetAlertService
 export const budgetAlertService = new BudgetAlertService(databaseService, budgetCalculationService);
 
+// Create a singleton instance of BudgetAnalyticsService
+export const budgetAnalyticsService = new BudgetAnalyticsService(databaseService, budgetCalculationService);
+
 // Export the service classes as well for testing
-export { DatabaseService, DataExportService, BudgetCalculationService, BudgetAlertService };
+export { 
+  DatabaseService, 
+  DataExportService, 
+  BudgetCalculationService, 
+  BudgetAlertService,
+  BudgetAnalyticsService 
+};

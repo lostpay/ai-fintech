@@ -20,6 +20,7 @@ export type RootStackParamList = {
     mode: 'create' | 'edit'; 
     category?: Category 
   };
+  BudgetAnalytics: undefined;
 };
 
 // Helper type for screens props

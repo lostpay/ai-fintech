@@ -14,7 +14,8 @@ import {
   BudgetScreen,
   HistoryScreen, 
   SettingsScreen,
-  CategoriesScreen 
+  CategoriesScreen,
+  BudgetAnalyticsScreen
 } from '../screens';
 import { CategoryFormScreen } from '../screens/CategoryFormScreen';
 
@@ -228,6 +229,14 @@ export const AppNavigator: React.FC = () => {
             headerTitleStyle: {
               color: theme.colors.onSurface,
             },
+          }}
+        />
+        <Stack.Screen 
+          name="BudgetAnalytics" 
+          component={BudgetAnalyticsScreen}
+          options={{
+            headerShown: false, // Screen handles its own header
+            presentation: 'card',
           }}
         />
       </Stack.Navigator>

@@ -5,7 +5,8 @@ import {
   StyleSheet, 
   Alert,
   RefreshControl,
-  Modal as RNModal
+  Modal as RNModal,
+  TouchableOpacity
 } from 'react-native';
 import { 
   FAB, 
@@ -15,6 +16,7 @@ import {
 } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useBudgets } from '../hooks/useBudgets';
 import { BudgetForm } from '../components/forms/BudgetForm';
@@ -23,6 +25,7 @@ import { useCategories } from '../hooks/useCategories';
 
 export const BudgetScreen: React.FC = () => {
   const { theme } = useTheme();
+  const navigation = useNavigation();
   const { 
     budgets, 
     loading, 
@@ -93,6 +96,10 @@ export const BudgetScreen: React.FC = () => {
     }
   };
 
+  const handleViewAnalytics = () => {
+    navigation.navigate('BudgetAnalytics' as never);
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -153,6 +160,29 @@ export const BudgetScreen: React.FC = () => {
       right: 16,
       bottom: 16,
       backgroundColor: theme.colors.primary,
+    },
+    analyticsPreview: {
+      marginBottom: 24,
+      backgroundColor: theme.colors.surfaceVariant,
+      borderRadius: 12,
+      padding: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    analyticsContent: {
+      flex: 1,
+      marginRight: 12,
+    },
+    analyticsTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: theme.colors.onSurface,
+      marginBottom: 4,
+    },
+    analyticsSubtitle: {
+      fontSize: 14,
+      color: theme.colors.onSurfaceVariant,
     },
   });
 
@@ -217,14 +247,35 @@ export const BudgetScreen: React.FC = () => {
             </Text>
           </View>
         ) : (
-          budgets.map((budget, index) => (
-            <BudgetCard
-              key={budget.id}
-              budget={budget}
-              onEdit={() => handleEditBudget(budget)}
-              onDelete={() => handleDeleteBudget(budget.id, budget.category_name)}
-            />
-          ))
+          <>
+            {budgets.map((budget, index) => (
+              <BudgetCard
+                key={budget.id}
+                budget={budget}
+                onEdit={() => handleEditBudget(budget)}
+                onDelete={() => handleDeleteBudget(budget.id, budget.category_name)}
+              />
+            ))}
+
+            {/* Analytics Preview */}
+            <TouchableOpacity 
+              style={styles.analyticsPreview}
+              onPress={handleViewAnalytics}
+              activeOpacity={0.7}
+            >
+              <View style={styles.analyticsContent}>
+                <Text style={styles.analyticsTitle}>📊 View Budget Analytics</Text>
+                <Text style={styles.analyticsSubtitle}>
+                  See spending trends and budget performance insights
+                </Text>
+              </View>
+              <MaterialIcons 
+                name="chevron-right" 
+                size={24} 
+                color={theme.colors.primary} 
+              />
+            </TouchableOpacity>
+          </>
         )}
       </ScrollView>
 
