@@ -60,6 +60,7 @@ export const CREATE_TABLES_SQL = {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+      UNIQUE (category_id, period_start, period_end),
       
       CHECK (amount > 0),
       CHECK (period_end > period_start)

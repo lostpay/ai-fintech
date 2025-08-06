@@ -292,3 +292,208 @@ export const formatValidationErrors = (errors: Record<string, string>): string =
   }
   return errorMessages.join('. ');
 };
+
+// ========== BUDGET VALIDATION UTILITIES ==========
+
+/**
+ * Interface for budget form data before database storage
+ */
+export interface BudgetFormData {
+  category_id: number | string;
+  amount: number | string;
+  period_start: Date | string;
+  period_end: Date | string;
+}
+
+/**
+ * Validates budget amount
+ * Requirements: Positive numbers only, reasonable limits for budgets
+ */
+export const validateBudgetAmount = (amount: string | number): ValidationResult => {
+  const amountStr = typeof amount === 'number' ? amount.toString() : amount;
+  
+  // Check if empty or null
+  if (!amountStr || amountStr.trim() === '') {
+    return {
+      isValid: false,
+      errorMessage: 'Budget amount is required'
+    };
+  }
+
+  // Remove any currency symbols and whitespace
+  const cleanAmount = amountStr.replace(/[$,\s]/g, '');
+  
+  // Check if it's a valid number
+  const numericAmount = parseFloat(cleanAmount);
+  if (isNaN(numericAmount)) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget amount must be a valid number'
+    };
+  }
+
+  // Check if positive
+  if (numericAmount <= 0) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget amount must be greater than zero'
+    };
+  }
+
+  // Check reasonable maximum for budgets
+  if (numericAmount > 999999.99) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget amount cannot exceed $999,999.99'
+    };
+  }
+
+  // Check decimal places (max 2 for currency)
+  const decimalPart = cleanAmount.split('.')[1];
+  if (decimalPart && decimalPart.length > 2) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget amount cannot have more than 2 decimal places'
+    };
+  }
+
+  return {
+    isValid: true,
+    sanitizedValue: Math.round(numericAmount * 100) / 100 // Round to 2 decimal places
+  };
+};
+
+/**
+ * Validates budget period dates
+ * Requirements: period_end must be after period_start, reasonable date ranges
+ */
+export const validateBudgetPeriod = (startDate: Date | string, endDate: Date | string): ValidationResult => {
+  let startDateObj: Date;
+  let endDateObj: Date;
+
+  // Convert strings to Date if necessary
+  if (typeof startDate === 'string') {
+    startDateObj = new Date(startDate);
+  } else {
+    startDateObj = startDate;
+  }
+
+  if (typeof endDate === 'string') {
+    endDateObj = new Date(endDate);
+  } else {
+    endDateObj = endDate;
+  }
+
+  // Check if valid dates
+  if (isNaN(startDateObj.getTime())) {
+    return {
+      isValid: false,
+      errorMessage: 'Invalid start date format'
+    };
+  }
+
+  if (isNaN(endDateObj.getTime())) {
+    return {
+      isValid: false,
+      errorMessage: 'Invalid end date format'
+    };
+  }
+
+  // Check that end date is after start date
+  if (endDateObj <= startDateObj) {
+    return {
+      isValid: false,
+      errorMessage: 'End date must be after start date'
+    };
+  }
+
+  // Check reasonable date range (not too far in the past or future)
+  const now = new Date();
+  const twoYearsAgo = new Date(now.getFullYear() - 2, now.getMonth(), now.getDate());
+  const twoYearsFromNow = new Date(now.getFullYear() + 2, now.getMonth(), now.getDate());
+
+  if (startDateObj < twoYearsAgo || endDateObj < twoYearsAgo) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget dates cannot be more than two years in the past'
+    };
+  }
+
+  if (startDateObj > twoYearsFromNow || endDateObj > twoYearsFromNow) {
+    return {
+      isValid: false,
+      errorMessage: 'Budget dates cannot be more than two years in the future'
+    };
+  }
+
+  return {
+    isValid: true,
+    sanitizedValue: { startDate: startDateObj, endDate: endDateObj }
+  };
+};
+
+/**
+ * TypeScript type guard for Budget data
+ */
+export const isValidBudgetData = (data: any): data is BudgetFormData => {
+  return (
+    data &&
+    typeof data === 'object' &&
+    (typeof data.amount === 'string' || typeof data.amount === 'number') &&
+    (typeof data.category_id === 'number' || typeof data.category_id === 'string') &&
+    (data.period_start instanceof Date || typeof data.period_start === 'string') &&
+    (data.period_end instanceof Date || typeof data.period_end === 'string')
+  );
+};
+
+/**
+ * Comprehensive validation for complete budget data
+ */
+export const validateCompleteBudget = (
+  data: BudgetFormData,
+  categories: Category[]
+): { isValid: boolean; errors: Record<string, string>; sanitizedData?: any } => {
+  const errors: Record<string, string> = {};
+  const sanitizedData: any = {};
+
+  // Validate type guard first
+  if (!isValidBudgetData(data)) {
+    return {
+      isValid: false,
+      errors: { general: 'Invalid budget data format' }
+    };
+  }
+
+  // Validate amount
+  const amountValidation = validateBudgetAmount(data.amount);
+  if (!amountValidation.isValid) {
+    errors.amount = amountValidation.errorMessage!;
+  } else {
+    sanitizedData.amount = amountValidation.sanitizedValue;
+  }
+
+  // Validate category
+  const categoryValidation = validateCategoryId(data.category_id, categories);
+  if (!categoryValidation.isValid) {
+    errors.category_id = categoryValidation.errorMessage!;
+  } else {
+    sanitizedData.category_id = categoryValidation.sanitizedValue;
+  }
+
+  // Validate period
+  const periodValidation = validateBudgetPeriod(data.period_start, data.period_end);
+  if (!periodValidation.isValid) {
+    errors.period = periodValidation.errorMessage!;
+  } else {
+    sanitizedData.period_start = periodValidation.sanitizedValue!.startDate;
+    sanitizedData.period_end = periodValidation.sanitizedValue!.endDate;
+  }
+
+  const isValid = Object.keys(errors).length === 0;
+
+  return {
+    isValid,
+    errors,
+    sanitizedData: isValid ? sanitizedData : undefined
+  };
+};

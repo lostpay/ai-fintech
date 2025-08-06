@@ -608,7 +608,7 @@ export class DatabaseService {
   }
 
   /**
-   * Get all budgets
+   * Get all budgets with category information
    */
   async getBudgets(): Promise<Budget[]> {
     if (!this.db) throw new Error('Database not connected');
@@ -618,6 +618,171 @@ export class DatabaseService {
       return budgets.map(this.formatBudgetDates);
     } catch (error) {
       console.error('Failed to get budgets:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get budgets by category
+   */
+  async getBudgetsByCategory(categoryId: number): Promise<Budget[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const budgets = await this.db.getAllAsync<Budget>(
+        'SELECT * FROM budgets WHERE category_id = ? ORDER BY period_start DESC',
+        [categoryId]
+      );
+      return budgets.map(this.formatBudgetDates);
+    } catch (error) {
+      console.error('Failed to get budgets by category:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get budget for specific period
+   */
+  async getBudgetForPeriod(categoryId: number, periodStart: Date, periodEnd: Date): Promise<Budget | null> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const budget = await this.db.getFirstAsync<Budget>(
+        'SELECT * FROM budgets WHERE category_id = ? AND period_start = ? AND period_end = ?',
+        [categoryId, periodStart.toISOString().split('T')[0], periodEnd.toISOString().split('T')[0]]
+      );
+      
+      return budget ? this.formatBudgetDates(budget) : null;
+    } catch (error) {
+      console.error('Failed to get budget for period:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update budget
+   */
+  async updateBudget(id: number, budgetData: Partial<CreateBudgetRequest>): Promise<Budget> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const updates: string[] = [];
+      const params: any[] = [];
+      
+      if (budgetData.amount !== undefined) {
+        updates.push('amount = ?');
+        params.push(budgetData.amount);
+      }
+      
+      if (budgetData.category_id !== undefined) {
+        updates.push('category_id = ?');
+        params.push(budgetData.category_id);
+      }
+      
+      if (budgetData.period_start !== undefined) {
+        updates.push('period_start = ?');
+        params.push(budgetData.period_start.toISOString().split('T')[0]);
+      }
+      
+      if (budgetData.period_end !== undefined) {
+        updates.push('period_end = ?');
+        params.push(budgetData.period_end.toISOString().split('T')[0]);
+      }
+      
+      if (updates.length === 0) {
+        throw new Error('No fields to update');
+      }
+      
+      params.push(id);
+      
+      await this.db.runAsync(
+        `UPDATE budgets SET ${updates.join(', ')} WHERE id = ?`,
+        params
+      );
+      
+      const budget = await this.db.getFirstAsync<Budget>(
+        'SELECT * FROM budgets WHERE id = ?',
+        [id]
+      );
+      
+      if (!budget) {
+        throw new Error('Failed to retrieve updated budget');
+      }
+      
+      return this.formatBudgetDates(budget);
+    } catch (error) {
+      console.error('Failed to update budget:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete budget
+   */
+  async deleteBudget(id: number): Promise<void> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const result = await this.db.runAsync('DELETE FROM budgets WHERE id = ?', [id]);
+      
+      if (result.changes === 0) {
+        throw new Error('Budget not found');
+      }
+    } catch (error) {
+      console.error('Failed to delete budget:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get budgets with category information and spending data
+   */
+  async getBudgetsWithDetails(): Promise<any[]> {
+    if (!this.db) throw new Error('Database not connected');
+    
+    try {
+      const query = `
+        SELECT 
+          b.id,
+          b.category_id,
+          b.amount,
+          b.period_start,
+          b.period_end,
+          b.created_at,
+          b.updated_at,
+          c.name as category_name,
+          c.color as category_color,
+          c.icon as category_icon,
+          COALESCE(SUM(t.amount), 0) as spent_amount
+        FROM budgets b
+        LEFT JOIN categories c ON b.category_id = c.id
+        LEFT JOIN transactions t ON t.category_id = b.category_id 
+          AND t.transaction_type = 'expense'
+          AND t.date >= b.period_start 
+          AND t.date <= b.period_end
+        GROUP BY b.id, b.category_id, b.amount, b.period_start, b.period_end, 
+                 b.created_at, b.updated_at, c.name, c.color, c.icon
+        ORDER BY b.period_start DESC
+      `;
+      
+      const results = await this.db.getAllAsync<any>(query);
+      
+      return results.map(row => ({
+        id: row.id,
+        category_id: row.category_id,
+        amount: row.amount,
+        period_start: new Date(row.period_start),
+        period_end: new Date(row.period_end),
+        created_at: new Date(row.created_at),
+        updated_at: new Date(row.updated_at),
+        category_name: row.category_name,
+        category_color: row.category_color,
+        category_icon: row.category_icon,
+        spent_amount: row.spent_amount || 0,
+        percentage: row.amount > 0 ? Math.round((row.spent_amount / row.amount) * 100) : 0
+      }));
+    } catch (error) {
+      console.error('Failed to get budgets with details:', error);
       throw error;
     }
   }

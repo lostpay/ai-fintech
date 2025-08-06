@@ -10,6 +10,7 @@ import { useTheme } from '../context/ThemeContext';
 import { 
   HomeScreen, 
   AddExpenseScreen, 
+  BudgetScreen,
   HistoryScreen, 
   SettingsScreen 
 } from '../screens';
@@ -128,6 +129,20 @@ export const AppNavigator: React.FC = () => {
             tabBarIcon: ({ color, size }) => (
               <MaterialIcons 
                 name="add-circle" 
+                size={size} 
+                color={color} 
+              />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Budget"
+          component={BudgetScreen}
+          options={{
+            title: 'Budget',
+            tabBarIcon: ({ color, size }) => (
+              <MaterialIcons 
+                name="account-balance-wallet" 
                 size={size} 
                 color={color} 
               />

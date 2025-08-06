@@ -6,6 +6,7 @@
 export type RootTabParamList = {
   Home: undefined;
   Add: undefined;
+  Budget: undefined;
   History: undefined;
   Settings: undefined;
 };

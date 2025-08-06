@@ -68,3 +68,52 @@ export const formatMonth = (date: Date): string => {
     year: 'numeric',
   }).format(date);
 };
+
+/**
+ * Get current month period for budget creation
+ * @returns Object with start and end dates for current month
+ */
+export const getCurrentMonthPeriod = (): { start: Date; end: Date } => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start, end };
+};
+
+/**
+ * Get month period for specific date
+ * @param date Date to get month period for
+ * @returns Object with start and end dates for the month
+ */
+export const getMonthPeriod = (date: Date): { start: Date; end: Date } => {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return { start, end };
+};
+
+/**
+ * Check if two date ranges overlap
+ * @param start1 Start date of first range
+ * @param end1 End date of first range
+ * @param start2 Start date of second range
+ * @param end2 End date of second range
+ * @returns True if ranges overlap
+ */
+export const doPeriadsOverlap = (
+  start1: Date, 
+  end1: Date, 
+  start2: Date, 
+  end2: Date
+): boolean => {
+  return start1 <= end2 && end1 >= start2;
+};
+
+/**
+ * Validate that period end is after period start
+ * @param startDate Period start date
+ * @param endDate Period end date
+ * @returns True if valid period
+ */
+export const isValidPeriod = (startDate: Date, endDate: Date): boolean => {
+  return endDate > startDate;
+};

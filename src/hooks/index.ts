@@ -2,3 +2,4 @@
 export { useCategories } from './useCategories';
 export { useTransactions } from './useTransactions';
 export { useDashboardStats } from './useDashboardStats';
+export { useBudgets } from './useBudgets';

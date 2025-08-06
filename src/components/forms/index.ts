@@ -1,5 +1,6 @@
 // Form components barrel export
 export { default as TransactionForm } from './TransactionForm';
+export { BudgetForm } from './BudgetForm';
 
 // Material Design 3 Form Components - Story 2.3
 export { default as AmountInput } from './AmountInput';
