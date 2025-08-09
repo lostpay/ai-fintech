@@ -1,6 +1,6 @@
 module.exports = {
   preset: 'react-native',
-  testEnvironment: 'jsdom',
+  testEnvironment: 'node',
   roots: ['<rootDir>/__tests__', '<rootDir>/src'],
   testMatch: [
     '**/__tests__/**/*.(test|spec).(ts|tsx|js|jsx)',
@@ -17,9 +17,11 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
   transformIgnorePatterns: [
-    'node_modules/(?!(@react-native|react-native|react-native-elements|@react-native-community|@react-native-picker)/)',
+    'node_modules/(?!(@react-native|react-native|@huggingface|@langchain)/)',
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^react-native-keychain$': '<rootDir>/__tests__/__mocks__/react-native-keychain.js',
+    '^expo-constants$': '<rootDir>/__tests__/__mocks__/expo-constants.js',
   },
 };

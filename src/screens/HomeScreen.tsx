@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { FAB } from 'react-native-elements';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -17,6 +17,7 @@ type Props = BottomTabScreenProps<RootTabParamList, 'Home'>;
 
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const { theme } = useTheme();
+  const [fabOpen, setFabOpen] = useState(false);
   const {
     dashboardData,
     loading,
@@ -26,15 +27,22 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   } = useDashboardStats();
 
   const handleFABPress = () => {
+    setFabOpen(!fabOpen);
+  };
+
+  const handleAddExpense = () => {
+    setFabOpen(false);
     navigation.navigate('Add');
+  };
+
+  const handleOpenAI = () => {
+    setFabOpen(false);
+    // @ts-ignore - Navigation type will be properly typed once AIAssistant is fully integrated
+    navigation.navigate('AIAssistant');
   };
 
   const handleViewAllTransactions = () => {
     navigation.navigate('History');
-  };
-
-  const handleAddExpense = () => {
-    navigation.navigate('Add');
   };
 
   // Show loading state while data is being fetched
@@ -58,11 +66,31 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         <EmptyDashboard onAddExpense={handleAddExpense} />
         <FAB
           style={styles.fab}
-          icon={{ name: 'add', type: 'material', color: 'white' }}
+          icon={{ name: fabOpen ? 'close' : 'add', type: 'material', color: 'white' }}
           color={theme.colors.primary}
           onPress={handleFABPress}
           testID="dashboard-fab"
         />
+        {fabOpen && (
+          <>
+            <FAB
+              style={[styles.subFab, styles.subFabFirst]}
+              icon={{ name: 'smart-toy', type: 'material', color: 'white' }}
+              color={theme.colors.secondary || theme.colors.primary}
+              onPress={handleOpenAI}
+              size="small"
+              testID="ai-assistant-fab"
+            />
+            <FAB
+              style={[styles.subFab, styles.subFabSecond]}
+              icon={{ name: 'add', type: 'material', color: 'white' }}
+              color={theme.colors.primary}
+              onPress={handleAddExpense}
+              size="small"
+              testID="add-expense-fab"
+            />
+          </>
+        )}
       </View>
     );
   }
@@ -112,11 +140,31 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       {/* Floating Action Button */}
       <FAB
         style={styles.fab}
-        icon={{ name: 'add', type: 'material', color: 'white' }}
+        icon={{ name: fabOpen ? 'close' : 'add', type: 'material', color: 'white' }}
         color={theme.colors.primary}
         onPress={handleFABPress}
         testID="dashboard-fab"
       />
+      {fabOpen && (
+        <>
+          <FAB
+            style={[styles.subFab, styles.subFabFirst]}
+            icon={{ name: 'smart-toy', type: 'material', color: 'white' }}
+            color={theme.colors.secondary || theme.colors.primary}
+            onPress={handleOpenAI}
+            size="small"
+            testID="ai-assistant-fab"
+          />
+          <FAB
+            style={[styles.subFab, styles.subFabSecond]}
+            icon={{ name: 'add', type: 'material', color: 'white' }}
+            color={theme.colors.primary}
+            onPress={handleAddExpense}
+            size="small"
+            testID="add-expense-fab"
+          />
+        </>
+      )}
     </View>
   );
 };
@@ -146,5 +194,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+  },
+  subFab: {
+    position: 'absolute',
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  subFabFirst: {
+    bottom: 88, // Above main FAB
+  },
+  subFabSecond: {
+    bottom: 144, // Above first sub FAB
   },
 });

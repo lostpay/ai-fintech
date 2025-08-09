@@ -18,6 +18,7 @@ import {
   BudgetAnalyticsScreen
 } from '../screens';
 import { CategoryFormScreen } from '../screens/CategoryFormScreen';
+import AIAssistantScreen from '../screens/AIAssistantScreen';
 
 // Import types
 import type { RootTabParamList, RootStackParamList } from './types';
@@ -237,6 +238,14 @@ export const AppNavigator: React.FC = () => {
           options={{
             headerShown: false, // Screen handles its own header
             presentation: 'card',
+          }}
+        />
+        <Stack.Screen 
+          name="AIAssistant" 
+          component={AIAssistantScreen}
+          options={{
+            headerShown: false, // Screen handles its own header
+            presentation: 'modal',
           }}
         />
       </Stack.Navigator>

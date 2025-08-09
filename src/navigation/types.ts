@@ -21,6 +21,7 @@ export type RootStackParamList = {
     category?: Category 
   };
   BudgetAnalytics: undefined;
+  AIAssistant: undefined;
 };
 
 // Helper type for screens props
