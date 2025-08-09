@@ -5,7 +5,6 @@ export type { ChatMessage, Conversation } from './ChatTypes';
 export type {
   AIQueryContext,
   AIResponse,
-  EmbeddedFinancialData,
   FinancialData,
   ParsedQuery,
   QueryEntity,
@@ -35,3 +34,23 @@ export type {
   ModelLoadingState,
   HuggingFaceError
 } from './HuggingFaceTypes';
+
+// Embedded Financial Data Types
+export type {
+  EmbeddedComponentType,
+  EmbeddedComponentSize,
+  BaseEmbeddedData,
+  EmbeddedBudgetCardData,
+  EmbeddedTransactionListData,
+  EmbeddedChartData,
+  EmbeddedFinancialData,
+  EmbeddedFinancialCardProps,
+  EmbeddedComponentConfig,
+  EmbeddedRenderProps,
+  ConversationFinancialContext,
+  ExtendedChatMessage,
+  AIResponseWithEmbedding,
+  EmbeddingUtilities,
+  EmbeddingError,
+  ChartDataPoint
+} from './EmbeddedDataTypes';

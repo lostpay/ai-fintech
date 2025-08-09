@@ -87,6 +87,32 @@ export const CREATE_TABLES_SQL = {
       CHECK (length(description) <= 500)
     );
   `,
+  
+  AI_CONVERSATIONS: `
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      messages TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      is_active BOOLEAN DEFAULT 1
+    );
+  `,
+  
+  AI_QUERY_CONTEXT: `
+    CREATE TABLE IF NOT EXISTS ai_query_context (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      last_query_type TEXT,
+      relevant_timeframe TEXT,
+      focus_categories TEXT,
+      budget_context TEXT,
+      langchain_memory TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id)
+    );
+  `,
 };
 
 export const CREATE_INDEXES_SQL = [
@@ -96,6 +122,8 @@ export const CREATE_INDEXES_SQL = [
   'CREATE INDEX IF NOT EXISTS idx_budgets_category_period ON budgets(category_id, period_start, period_end);',
   'CREATE INDEX IF NOT EXISTS idx_categories_visibility ON categories(is_default, is_hidden);',
   'CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);',
+  'CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_active ON ai_conversations(user_id, is_active);',
+  'CREATE INDEX IF NOT EXISTS idx_ai_query_context_conversation ON ai_query_context(conversation_id);',
 ];
 
 export const CREATE_TRIGGERS_SQL = [
@@ -125,6 +153,20 @@ export const CREATE_TRIGGERS_SQL = [
     AFTER UPDATE ON goals
     BEGIN
       UPDATE goals SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `,
+  `
+    CREATE TRIGGER IF NOT EXISTS update_ai_conversations_timestamp 
+    AFTER UPDATE ON ai_conversations
+    BEGIN
+      UPDATE ai_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `,
+  `
+    CREATE TRIGGER IF NOT EXISTS update_ai_query_context_timestamp 
+    AFTER UPDATE ON ai_query_context
+    BEGIN
+      UPDATE ai_query_context SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
     END;
   `,
 ];

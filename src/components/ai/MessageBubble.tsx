@@ -2,13 +2,17 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, Card, useTheme, Icon } from 'react-native-paper';
 import { ChatMessage } from '../../types/ai';
+import { ExtendedChatMessage } from '../../types/ai/EmbeddedDataTypes';
+import { EmbeddedFinancialCard } from './EmbeddedFinancialCard';
+import { PrivacyIndicator } from './PrivacyIndicator';
 
 interface MessageBubbleProps {
-  message: ChatMessage;
+  message: ChatMessage | ExtendedChatMessage;
   testID?: string;
+  onEmbeddedInteraction?: (action: string, data?: any) => void;
 }
 
-export default function MessageBubble({ message, testID }: MessageBubbleProps) {
+export default function MessageBubble({ message, testID, onEmbeddedInteraction }: MessageBubbleProps) {
   const theme = useTheme();
   const isUser = message.role === 'user';
 
@@ -53,6 +57,11 @@ export default function MessageBubble({ message, testID }: MessageBubbleProps) {
     }
   };
 
+  // Check if message has embedded data
+  const extendedMessage = message as ExtendedChatMessage;
+  const hasEmbeddedData = extendedMessage.embeddedData;
+  const hasPrivacyInfo = extendedMessage.processingType;
+
   return (
     <View style={styles.messageContainer} testID={testID}>
       <Card style={[styles.bubble, getBubbleStyle()]}>
@@ -64,6 +73,17 @@ export default function MessageBubble({ message, testID }: MessageBubbleProps) {
             {message.content}
           </Text>
           
+          {/* Embedded Financial Component */}
+          {hasEmbeddedData && !isUser && (
+            <View style={styles.embeddedContainer}>
+              <EmbeddedFinancialCard
+                embeddedData={extendedMessage.embeddedData!}
+                onInteraction={onEmbeddedInteraction}
+                style={styles.embeddedComponent}
+              />
+            </View>
+          )}
+          
           <View style={styles.metaInfo}>
             <Text 
               style={[styles.timestamp, { color: getTextColor() }]}
@@ -71,6 +91,15 @@ export default function MessageBubble({ message, testID }: MessageBubbleProps) {
             >
               {formatTime(message.timestamp)}
             </Text>
+            
+            {/* Privacy Indicator for AI responses */}
+            {hasPrivacyInfo && !isUser && (
+              <PrivacyIndicator 
+                processingType={extendedMessage.processingType!}
+                size="small"
+              />
+            )}
+            
             {getStatusIcon()}
           </View>
         </Card.Content>
@@ -97,6 +126,14 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 16,
     lineHeight: 20,
+  },
+  embeddedContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  embeddedComponent: {
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   metaInfo: {
     flexDirection: 'row',

@@ -16,7 +16,7 @@ class HuggingFaceModelManager {
   private config: HuggingFaceConfig | null = null;
   private models: Record<ModelType, HuggingFaceModel> = {
     conversational: {
-      name: Constants.expoConfig?.extra?.HF_CONVERSATIONAL_MODEL || 'microsoft/DialoGPT-medium',
+      name: Constants.expoConfig?.extra?.HF_CONVERSATIONAL_MODEL || 'microsoft/BlenderBot-400M-distill',
       type: 'conversational',
       endpoint: '',
       temperature: Number(Constants.expoConfig?.extra?.AI_TEMPERATURE) || 0.7,
@@ -24,7 +24,7 @@ class HuggingFaceModelManager {
       isLoaded: false
     },
     financial_analysis: {
-      name: Constants.expoConfig?.extra?.HF_FINANCIAL_MODEL || 'ProsusAI/finbert',
+      name: Constants.expoConfig?.extra?.HF_FINANCIAL_MODEL || 'cardiffnlp/twitter-roberta-base-sentiment-latest',
       type: 'financial_analysis',
       endpoint: '',
       temperature: 0.3,
@@ -40,7 +40,7 @@ class HuggingFaceModelManager {
       isLoaded: false
     },
     general_purpose: {
-      name: Constants.expoConfig?.extra?.HF_GENERAL_MODEL || 'google/flan-t5-base',
+      name: Constants.expoConfig?.extra?.HF_GENERAL_MODEL || 'distilbert-base-uncased-finetuned-sst-2-english',
       type: 'general_purpose',
       endpoint: '',
       temperature: Number(Constants.expoConfig?.extra?.AI_TEMPERATURE) || 0.5,
@@ -117,27 +117,33 @@ class HuggingFaceModelManager {
     try {
       const model = this.getClassificationModel();
       
-      // Use proper HuggingFace text classification API
-      const result = await this.hf.textClassification({
+      // Use zero-shot classification API for facebook/bart-large-mnli
+      const result = await this.hf.zeroShotClassification({
         model: model.name,
-        inputs: text
+        inputs: text,
+        parameters: { candidate_labels: candidateLabels }
       });
 
-      // Convert HF result to our interface format
-      if (Array.isArray(result)) {
+      // Convert HF result to our interface format - handle different response structures
+      if (result && (result.labels || result.sequence)) {
         return {
-          labels: result.map(r => r.label),
-          scores: result.map(r => r.score),
+          labels: result.labels || candidateLabels,
+          scores: result.scores || candidateLabels.map(() => 0.5),
+          sequence: result.sequence || text
+        };
+      }
+
+      // Handle array response format
+      if (Array.isArray(result) && result.length > 0) {
+        return {
+          labels: result.map(r => r.label || candidateLabels[0]),
+          scores: result.map(r => r.score || 0.5),
           sequence: text
         };
       }
 
-      // Fallback for single result
-      return {
-        labels: [result.label],
-        scores: [result.score],
-        sequence: text
-      };
+      // Fallback if response structure is unexpected
+      throw new Error('Unexpected response structure from zero-shot classification');
     } catch (error) {
       console.error('Classification failed, using fallback:', error);
       
@@ -173,31 +179,53 @@ class HuggingFaceModelManager {
     try {
       const model = this.getConversationalModel();
       
-      // Use proper HuggingFace chat completion API
-      const messages = [
-        ...pastUserInputs?.map((input, i) => [
-          { role: 'user' as const, content: input },
-          { role: 'assistant' as const, content: generatedResponses?.[i] || 'I understand.' }
-        ]).flat() || [],
-        { role: 'user' as const, content: inputs }
-      ];
+      // Try conversational API first (for BlenderBot/DialoGPT)
+      try {
+        const result = await this.hf.conversational({
+          model: model.name,
+          inputs: {
+            text: inputs,
+            past_user_inputs: pastUserInputs || [],
+            generated_responses: generatedResponses || []
+          },
+          parameters: {
+            max_length: model.maxTokens || 150,
+            temperature: model.temperature || 0.7,
+            do_sample: true
+          }
+        });
 
-      const response = await this.hf.chatCompletion({
-        model: model.name,
-        messages: messages,
-        max_tokens: model.maxTokens || 150,
-        temperature: model.temperature || 0.7
-      });
+        return {
+          generated_text: result.generated_text,
+          conversation: result.conversation
+        };
+      } catch (conversationalError) {
+        // Fallback to text generation for models that don't support conversational
+        const contextText = pastUserInputs && generatedResponses 
+          ? pastUserInputs.map((input, i) => `Human: ${input}\nAssistant: ${generatedResponses[i] || 'I understand.'}`).join('\n') + `\nHuman: ${inputs}\nAssistant:`
+          : `Human: ${inputs}\nAssistant:`;
 
-      const generated_text = response.choices?.[0]?.message?.content || `Response to: ${inputs}`;
+        const textResult = await this.hf.textGeneration({
+          model: model.name,
+          inputs: contextText,
+          parameters: {
+            max_new_tokens: model.maxTokens || 150,
+            temperature: model.temperature || 0.7,
+            do_sample: true,
+            return_full_text: false
+          }
+        });
 
-      return {
-        generated_text,
-        conversation: {
-          past_user_inputs: [...(pastUserInputs || []), inputs],
-          generated_responses: [...(generatedResponses || []), generated_text]
-        }
-      };
+        const generated_text = textResult.generated_text?.trim() || `I can help you with financial questions about spending, budgets, and transactions.`;
+
+        return {
+          generated_text,
+          conversation: {
+            past_user_inputs: [...(pastUserInputs || []), inputs],
+            generated_responses: [...(generatedResponses || []), generated_text]
+          }
+        };
+      }
     } catch (error) {
       console.error('Conversational generation failed, using fallback:', error);
       

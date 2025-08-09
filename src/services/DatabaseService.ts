@@ -140,6 +140,8 @@ export class DatabaseService {
         ${CREATE_TABLES_SQL.TRANSACTIONS}
         ${CREATE_TABLES_SQL.BUDGETS}
         ${CREATE_TABLES_SQL.GOALS}
+        ${CREATE_TABLES_SQL.AI_CONVERSATIONS}
+        ${CREATE_TABLES_SQL.AI_QUERY_CONTEXT}
         COMMIT;
       `);
     } catch (error) {
@@ -948,6 +950,22 @@ export class DatabaseService {
       console.error('Failed to get goals:', error);
       throw error;
     }
+  }
+
+  // ========== AI CONVERSATION OPERATIONS ==========
+
+  /**
+   * Get all categories for AI context
+   */
+  async getAllCategories(): Promise<Category[]> {
+    return this.getCategories();
+  }
+
+  /**
+   * Get all budgets for AI context
+   */
+  async getAllBudgets(): Promise<Budget[]> {
+    return this.getBudgets();
   }
 
   // ========== UTILITY METHODS ==========

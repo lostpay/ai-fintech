@@ -1,3 +1,5 @@
+import type { QueryType, FinancialIntent, QueryEntity, ProcessingType, ParsedQuery } from './AITypes';
+
 export interface QueryClassification {
   type: QueryType;
   confidence: number;
@@ -29,13 +31,3 @@ export interface QueryValidationResult {
   errors?: string[];
   confidence: number;
 }
-
-// Re-export types from AITypes for convenience
-export type {
-  QueryType,
-  FinancialIntent,
-  ProcessingType,
-  ParsedQuery,
-  QueryEntity,
-  TimeFrame
-} from './AITypes';

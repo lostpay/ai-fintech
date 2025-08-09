@@ -1,14 +1,28 @@
-import { AIResponse, AIQueryContext, EmbeddedFinancialData, QueryType, FinancialData, ChatMessage, ComponentDisplayData } from '../../types/ai';
+import { AIResponse, AIQueryContext, QueryType, FinancialData } from '../../types/ai';
+import { 
+  EmbeddedBudgetCardData, 
+  EmbeddedTransactionListData, 
+  EmbeddedChartData,
+  AIResponseWithEmbedding,
+  ProcessingType,
+  EmbeddedFinancialData,
+  ExtendedChatMessage,
+  ConversationFinancialContext
+} from '../../types/ai/EmbeddedDataTypes';
 import { DatabaseService } from '../DatabaseService';
 import { BudgetAnalyticsService } from '../BudgetAnalyticsService';
 import { BudgetCalculationService } from '../BudgetCalculationService';
 import HuggingFaceModelManager from './HuggingFaceModelManager';
 import LangChainOrchestrator from './LangChainOrchestrator';
 import AIQueryProcessor from './AIQueryProcessor';
+import ConversationManager from './ConversationManager';
+import PrivacyManager from './PrivacyManager';
 
 export class AIService {
   private static instance: AIService;
   private initialized = false;
+  private conversationManager: ConversationManager;
+  private privacyManager: PrivacyManager;
 
   public static getInstance(): AIService {
     if (!AIService.instance) {
@@ -19,6 +33,8 @@ export class AIService {
 
   private constructor() {
     // Private constructor for singleton pattern
+    this.conversationManager = ConversationManager.getInstance();
+    this.privacyManager = PrivacyManager.getInstance();
   }
 
   async initialize(): Promise<void> {
@@ -28,6 +44,8 @@ export class AIService {
       // Initialize AI components
       await HuggingFaceModelManager.initialize();
       await LangChainOrchestrator.initialize();
+      await this.conversationManager.initialize();
+      await this.privacyManager.initialize();
       
       this.initialized = true;
     } catch (error) {
@@ -415,7 +433,7 @@ export class AIService {
       case 'budget_status':
         if (data.budgetStatus) {
           return {
-            type: 'budget_card',
+            type: 'BudgetCard',
             title: 'Budget Status',
             data: data.budgetStatus
           };
@@ -425,7 +443,7 @@ export class AIService {
       case 'transaction_search':
         if (data.transactions) {
           return {
-            type: 'transaction_list',
+            type: 'TransactionList',
             title: 'Recent Transactions',
             data: { transactions: data.transactions }
           };
@@ -435,7 +453,7 @@ export class AIService {
       case 'spending_summary':
         if (data.categories) {
           return {
-            type: 'category_breakdown',
+            type: 'CategoryBreakdownChart',
             title: 'Spending by Category',
             data: { categories: data.categories, amount: data.amount }
           };
@@ -451,7 +469,7 @@ export class AIService {
   private async getFinancialContext(context?: AIQueryContext): Promise<any> {
     try {
       return {
-        recentTransactions: await DatabaseService.getInstance().getTransactions(undefined, undefined, undefined, undefined, 10),
+        recentTransactions: await DatabaseService.getInstance().getTransactions(),
         activeBudgets: await DatabaseService.getInstance().getBudgets(),
         categories: await DatabaseService.getInstance().getCategories()
       };
@@ -476,6 +494,259 @@ export class AIService {
 
   public isInitialized(): boolean {
     return this.initialized && HuggingFaceModelManager.isInitialized();
+  }
+
+  /**
+   * Enhanced query processing with embedded financial components
+   */
+  public async processQueryWithEmbedding(
+    query: string, 
+    context?: AIQueryContext
+  ): Promise<AIResponseWithEmbedding> {
+    try {
+      // Check for follow-up query and enhance context
+      const conversationContext = this.conversationManager.getConversationContext();
+      let enhancedContext = context;
+      
+      if (conversationContext) {
+        const followUpResult = await this.conversationManager.handleFollowUpQuery(query, context);
+        enhancedContext = followUpResult.enhancedContext;
+        query = followUpResult.contextualQuery;
+      }
+
+      // Determine processing type based on privacy preferences
+      const privacyPrefs = this.privacyManager.getPrivacyPreferences();
+      const processingType: ProcessingType = privacyPrefs.processingType;
+
+      // Check consent for processing type
+      const hasConsent = await this.privacyManager.requestConsent(
+        'query_processing', 
+        processingType, 
+        ['financial_data', 'conversation_context']
+      );
+
+      if (!hasConsent && processingType === 'hugging-face') {
+        return {
+          content: 'Cloud AI processing requires your consent. Please update your privacy settings to continue.',
+          processingType: 'on-device',
+          modelUsed: 'local_fallback',
+        };
+      }
+
+      // Process query with enhanced embedding
+      let response: AIResponse;
+      if (this.initialized && processingType === 'hugging-face') {
+        response = await this.processQueryWithAI(query, enhancedContext);
+      } else {
+        response = await this.processQuery(query, enhancedContext);
+      }
+
+      // Create enhanced embedded data
+      const embeddedData = await this.createEnhancedEmbeddedData(response.embeddedData, enhancedContext);
+
+      // Create enhanced response
+      const enhancedResponse: AIResponseWithEmbedding = {
+        content: response.content,
+        embeddedData,
+        suggestedActions: response.suggestedActions,
+        processingType,
+        modelUsed: processingType === 'hugging-face' ? 'hugging-face-model' : 'local-processing',
+        contextUpdates: conversationContext ? {
+          lastQueryType: await this.classifyQueryType(query),
+        } : undefined,
+      };
+
+      // Update conversation history
+      await this.addToConversationHistory(query, enhancedResponse);
+
+      return enhancedResponse;
+    } catch (error) {
+      console.error('Enhanced query processing failed:', error);
+      
+      // Fallback response
+      return {
+        content: 'I encountered an error processing your request. Please try again.',
+        processingType: 'on-device',
+        modelUsed: 'error_fallback',
+      };
+    }
+  }
+
+  /**
+   * Create enhanced embedded data with proper typing
+   */
+  private async createEnhancedEmbeddedData(
+    originalEmbeddedData: EmbeddedFinancialData | undefined,
+    context?: AIQueryContext
+  ): Promise<EmbeddedFinancialData | undefined> {
+    if (!originalEmbeddedData) return undefined;
+
+    const dbService = DatabaseService.getInstance();
+
+    try {
+      switch (originalEmbeddedData.type) {
+        case 'BudgetCard':
+          // Get actual budget data
+          const budgets = await dbService.getBudgetsWithDetails();
+          if (budgets.length > 0) {
+            const budget = budgets[0]; // Use first budget for now
+            return {
+              type: 'BudgetCard',
+              budgetData: budget,
+              progressData: {
+                spent: budget.spent_amount,
+                remaining: budget.amount - budget.spent_amount,
+                percentage: budget.percentage,
+              },
+              size: 'full',
+              chatContext: true,
+              title: originalEmbeddedData.title,
+            } as EmbeddedBudgetCardData;
+          }
+          break;
+
+        case 'TransactionList':
+          // Get actual transaction data
+          const transactions = await dbService.getTransactionsWithCategories();
+          return {
+            type: 'TransactionList',
+            transactions: transactions.slice(0, 10),
+            totalCount: transactions.length,
+            size: 'full',
+            chatContext: true,
+            title: originalEmbeddedData.title,
+          } as EmbeddedTransactionListData;
+
+        case 'CategoryBreakdownChart':
+          // Get category breakdown data
+          const analyticsService = new BudgetAnalyticsService(DatabaseService.getInstance());
+          const categoryData = await analyticsService.getCategoryBreakdown();
+          return {
+            type: 'CategoryBreakdownChart',
+            chartData: categoryData.map(cat => ({
+              x: cat.category_name,
+              y: cat.total_spent / 100, // Convert cents to dollars
+              label: cat.category_name,
+              color: cat.category_color,
+            })),
+            metadata: {
+              totalAmount: categoryData.reduce((sum, cat) => sum + cat.total_spent, 0),
+              currency: 'USD',
+              period: 'current_month',
+            },
+            size: 'full',
+            chatContext: true,
+            title: originalEmbeddedData.title,
+          } as EmbeddedChartData;
+
+        default:
+          return originalEmbeddedData;
+      }
+    } catch (error) {
+      console.error('Failed to create enhanced embedded data:', error);
+      return originalEmbeddedData;
+    }
+
+    return originalEmbeddedData;
+  }
+
+  /**
+   * Add query and response to conversation history
+   */
+  private async addToConversationHistory(
+    query: string, 
+    response: AIResponseWithEmbedding
+  ): Promise<void> {
+    try {
+      // Add user message
+      const userMessage: ExtendedChatMessage = {
+        id: this.generateMessageId(),
+        content: query,
+        role: 'user',
+        timestamp: new Date(),
+        status: 'sent',
+      };
+
+      await this.conversationManager.addMessage(userMessage);
+
+      // Add assistant response
+      const assistantMessage: ExtendedChatMessage = {
+        id: this.generateMessageId(),
+        content: response.content,
+        role: 'assistant',
+        timestamp: new Date(),
+        status: 'sent',
+        embeddedData: response.embeddedData,
+        processingType: response.processingType,
+        modelUsed: response.modelUsed,
+      };
+
+      await this.conversationManager.addMessage(assistantMessage);
+    } catch (error) {
+      console.error('Failed to add to conversation history:', error);
+    }
+  }
+
+  /**
+   * Generate unique message ID
+   */
+  private generateMessageId(): string {
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Format financial data for chat display
+   */
+  public formatFinancialDataForChat(
+    data: any, 
+    componentType: 'BudgetCard' | 'TransactionList' | 'Chart'
+  ): EmbeddedFinancialData {
+    switch (componentType) {
+      case 'BudgetCard':
+        return {
+          type: 'BudgetCard',
+          budgetData: data.budget,
+          progressData: data.progress,
+          size: 'compact',
+          chatContext: true,
+        } as EmbeddedBudgetCardData;
+
+      case 'TransactionList':
+        return {
+          type: 'TransactionList',
+          transactions: data.transactions,
+          totalCount: data.totalCount,
+          dateRange: data.dateRange,
+          size: 'compact',
+          chatContext: true,
+        } as EmbeddedTransactionListData;
+
+      case 'Chart':
+        return {
+          type: 'CategoryBreakdownChart',
+          chartData: data.chartData,
+          metadata: data.metadata,
+          size: 'compact',
+          chatContext: true,
+        } as EmbeddedChartData;
+
+      default:
+        throw new Error(`Unsupported component type: ${componentType}`);
+    }
+  }
+
+  /**
+   * Get conversation context for follow-up queries
+   */
+  public getConversationContext(): ConversationFinancialContext | null {
+    return this.conversationManager.getConversationContext();
+  }
+
+  /**
+   * Clear current conversation and start fresh
+   */
+  public async clearConversation(): Promise<void> {
+    await this.conversationManager.clearConversation();
   }
 }
 
