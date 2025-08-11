@@ -1,5 +1,9 @@
-// Main AI Service (existing, enhanced)
+// Main AI Services
 export { AIService, default } from './AIService';
+export { AIServiceBackend } from './AIServiceBackend';
+
+// Backend Client
+export { AIBackendClient, getAIBackendClient, initializeAIBackendClient } from './AIBackendClient';
 
 // AI Processing Services
 export { default as AIQueryProcessor } from './AIQueryProcessor';

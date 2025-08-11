@@ -269,12 +269,12 @@ export class AIService {
       }
 
       const databaseService = DatabaseService.getInstance();
-      const transactions = await databaseService.getTransactions(undefined, 'expense', startDate, endDate);
+      const transactions = await databaseService.getTransactionsWithCategories(undefined, 'expense', startDate, endDate);
       
       let filteredTransactions = transactions;
       if (parsedQuery.category) {
         filteredTransactions = transactions.filter(t => 
-          t.category?.toLowerCase().includes(parsedQuery.category.toLowerCase())
+          t.category_name?.toLowerCase().includes(parsedQuery.category.toLowerCase())
         );
       }
 
@@ -282,7 +282,7 @@ export class AIService {
         amount: filteredTransactions.reduce((sum, t) => sum + t.amount, 0),
         transactions: filteredTransactions,
         timeframe: parsedQuery.timeframe?.value || 'custom',
-        categories: [...new Set(filteredTransactions.map(t => t.category).filter(Boolean))]
+        categories: [...new Set(filteredTransactions.map(t => t.category_name).filter(Boolean))]
       };
     } catch (error) {
       console.error('Error getting spending data:', error);
@@ -293,12 +293,12 @@ export class AIService {
   private async getBudgetData(parsedQuery: any): Promise<FinancialData> {
     try {
       const databaseService = DatabaseService.getInstance();
-      const budgets = await databaseService.getBudgets();
+      const budgets = await databaseService.getBudgetsWithDetails();
       const budgetCalcService = new BudgetCalculationService(databaseService);
       
       if (parsedQuery.category) {
         const budget = budgets.find(b => 
-          b.category.toLowerCase().includes(parsedQuery.category.toLowerCase())
+          b.category_name?.toLowerCase().includes(parsedQuery.category.toLowerCase())
         );
         
         if (budget) {
@@ -307,7 +307,7 @@ export class AIService {
           if (budgetProgress) {
             return {
               budgetStatus: {
-                category: budget.category,
+                category: budget.category_name,
                 budgeted: budgetProgress.budgeted_amount,
                 spent: budgetProgress.spent_amount,
                 remaining: budgetProgress.remaining_amount,
@@ -321,7 +321,7 @@ export class AIService {
         budgets.map(async (budget) => {
           const budgetProgress = await budgetCalcService.getBudgetProgress(budget.id);
           return {
-            category: budget.category,
+            category: budget.category_name,
             budgeted: budgetProgress?.budgeted_amount || budget.amount,
             spent: budgetProgress?.spent_amount || 0,
             remaining: budgetProgress?.remaining_amount || budget.amount,
@@ -357,11 +357,11 @@ export class AIService {
   private async getTransactionData(parsedQuery: any): Promise<FinancialData> {
     try {
       const databaseService = DatabaseService.getInstance();
-      let transactions = await databaseService.getTransactions();
+      let transactions = await databaseService.getTransactionsWithCategories();
 
       if (parsedQuery.category) {
         transactions = transactions.filter(t => 
-          t.category?.toLowerCase().includes(parsedQuery.category.toLowerCase())
+          t.category_name?.toLowerCase().includes(parsedQuery.category.toLowerCase())
         );
       }
 
@@ -380,7 +380,7 @@ export class AIService {
       return {
         transactions: transactions.slice(0, 20),
         amount: transactions.reduce((sum, t) => sum + t.amount, 0),
-        categories: [...new Set(transactions.map(t => t.category).filter(Boolean))]
+        categories: [...new Set(transactions.map(t => t.category_name).filter(Boolean))]
       };
     } catch (error) {
       console.error('Error getting transaction data:', error);
@@ -435,7 +435,14 @@ export class AIService {
           return {
             type: 'BudgetCard',
             title: 'Budget Status',
-            data: data.budgetStatus
+            size: 'compact' as const,
+            chatContext: true,
+            budgetData: data.budgetStatus as any, // TODO: Fix budget data structure
+            progressData: {
+              spent: data.budgetStatus.spent || 0,
+              remaining: data.budgetStatus.remaining || 0,
+              percentage: data.budgetStatus.percentage || 0
+            }
           };
         }
         break;
@@ -445,7 +452,10 @@ export class AIService {
           return {
             type: 'TransactionList',
             title: 'Recent Transactions',
-            data: { transactions: data.transactions }
+            size: 'compact' as const,
+            chatContext: true,
+            transactions: data.transactions,
+            totalCount: data.transactions.length
           };
         }
         break;
@@ -455,7 +465,18 @@ export class AIService {
           return {
             type: 'CategoryBreakdownChart',
             title: 'Spending by Category',
-            data: { categories: data.categories, amount: data.amount }
+            size: 'compact' as const,
+            chatContext: true,
+            chartData: data.categories?.map((category: string, index: number) => ({
+              x: category,
+              y: data.amount || 0,
+              label: category
+            })) || [],
+            metadata: {
+              totalAmount: data.amount || 0,
+              currency: 'USD',
+              categories: []
+            }
           };
         }
         break;
@@ -620,7 +641,7 @@ export class AIService {
         case 'CategoryBreakdownChart':
           // Get category breakdown data
           const analyticsService = new BudgetAnalyticsService(DatabaseService.getInstance());
-          const categoryData = await analyticsService.getCategoryBreakdown();
+          const categoryData = await analyticsService.getCategoryPerformanceAnalysis();
           return {
             type: 'CategoryBreakdownChart',
             chartData: categoryData.map(cat => ({

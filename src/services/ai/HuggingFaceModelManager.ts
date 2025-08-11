@@ -16,7 +16,7 @@ class HuggingFaceModelManager {
   private config: HuggingFaceConfig | null = null;
   private models: Record<ModelType, HuggingFaceModel> = {
     conversational: {
-      name: Constants.expoConfig?.extra?.HF_CONVERSATIONAL_MODEL || 'microsoft/BlenderBot-400M-distill',
+      name: Constants.expoConfig?.extra?.HF_CONVERSATIONAL_MODEL || 'microsoft/DialoGPT-medium',
       type: 'conversational',
       endpoint: '',
       temperature: Number(Constants.expoConfig?.extra?.AI_TEMPERATURE) || 0.7,
@@ -125,11 +125,11 @@ class HuggingFaceModelManager {
       });
 
       // Convert HF result to our interface format - handle different response structures
-      if (result && (result.labels || result.sequence)) {
+      if (result && ((result as any).labels || (result as any).sequence)) {
         return {
-          labels: result.labels || candidateLabels,
-          scores: result.scores || candidateLabels.map(() => 0.5),
-          sequence: result.sequence || text
+          labels: (result as any).labels || candidateLabels,
+          scores: (result as any).scores || candidateLabels.map(() => 0.5),
+          sequence: (result as any).sequence || text
         };
       }
 
@@ -181,7 +181,7 @@ class HuggingFaceModelManager {
       
       // Try conversational API first (for BlenderBot/DialoGPT)
       try {
-        const result = await this.hf.conversational({
+        const result = await (this.hf as any).conversational({
           model: model.name,
           inputs: {
             text: inputs,
