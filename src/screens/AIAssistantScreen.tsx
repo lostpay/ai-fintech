@@ -4,8 +4,9 @@ import { Appbar, useTheme, Snackbar } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { ChatInterface } from '../components/ai';
 import { ChatProvider, useChat } from '../context/ChatContext';
-import { AIServiceBackend } from '../services/ai';
+import { AIService } from '../services/ai';
 import { ChatMessage } from '../types/ai';
+import { ExtendedChatMessage } from '../types/ai/EmbeddedDataTypes';
 
 // Inner component that uses ChatContext
 function AIAssistantContent() {
@@ -14,33 +15,36 @@ function AIAssistantContent() {
   const { addMessage, setLoading } = useChat();
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [aiStatus, setAIStatus] = useState<{mode: string, backendConnected: boolean} | null>(null);
 
-  const aiService = AIServiceBackend.getInstance();
+  const aiService = AIService.getInstance();
 
   // Initialize AI service when component mounts
   React.useEffect(() => {
-    aiService.initialize().catch(error => {
-      console.log('AI service initialization failed:', error);
-      setSnackbarMessage('AI service initialization failed - using offline mode');
-      setSnackbarVisible(true);
-    });
-  }, [aiService]);
-
-  // Check backend connection status
-  React.useEffect(() => {
-    const checkBackendStatus = async () => {
-      const isConnected = await aiService.checkBackendHealth();
-      if (!isConnected) {
-        setSnackbarMessage('AI backend offline - limited functionality available');
+    const initializeAI = async () => {
+      try {
+        await aiService.initialize();
+        const status = await aiService.getStatus();
+        setAIStatus(status);
+        
+        const statusMessages: Record<string, string> = {
+          'backend': '✅ Connected to AI Backend - Real database data available',
+          'local-ai': '⚠️ Using local AI processing - Limited functionality',
+          'database-only': '🔒 Database-only mode - Template responses with real data'
+        };
+        
+        setSnackbarMessage(statusMessages[status.mode]);
         setSnackbarVisible(true);
+        
+      } catch (error) {
+        console.log('AI service initialization failed:', error);
+        setSnackbarMessage('❌ AI service initialization failed - using offline mode');
+        setSnackbarVisible(true);
+        setAIStatus({mode: 'database-only', backendConnected: false});
       }
     };
 
-    checkBackendStatus();
-    
-    // Check every 30 seconds
-    const interval = setInterval(checkBackendStatus, 30000);
-    return () => clearInterval(interval);
+    initializeAI();
   }, [aiService]);
 
   const handleSendMessage = async (message: string) => {
@@ -60,7 +64,7 @@ function AIAssistantContent() {
       const response = await aiService.processQueryWithEmbedding(message);
       
       // Create AI response message with enhanced data
-      const aiMessage: ChatMessage = {
+      const aiMessage: ExtendedChatMessage = {
         id: (Date.now() + 1).toString(), // +1 to ensure different ID from user message
         content: response.content,
         role: 'assistant',
@@ -68,7 +72,7 @@ function AIAssistantContent() {
         embeddedData: response.embeddedData,
         processingType: response.processingType,
         modelUsed: response.modelUsed,
-        suggestedActions: response.suggestedActions
+        status: 'sent'
       };
 
       // Add AI response to conversation
@@ -76,7 +80,7 @@ function AIAssistantContent() {
       
       // Show processing type info if using fallback
       if (response.processingType === 'on-device') {
-        setSnackbarMessage('Using offline AI processing');
+        setSnackbarMessage('Using local AI processing with your data');
         setSnackbarVisible(true);
       }
       
@@ -105,7 +109,7 @@ function AIAssistantContent() {
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content 
           title="AI Assistant" 
-          subtitle={aiService.isBackendConnected() ? 'Online' : 'Offline Mode'}
+          subtitle={aiStatus ? `Mode: ${aiStatus.mode}${aiStatus.backendConnected ? ' (Backend)' : ''}` : 'Initializing...'}
         />
         <Appbar.Action 
           icon="dots-vertical" 

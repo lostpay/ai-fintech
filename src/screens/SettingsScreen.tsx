@@ -6,13 +6,12 @@ import type { RootTabParamList } from '../navigation/types';
 import { 
   SettingsSection, 
   ThemeToggleItem, 
-  DataExportItem, 
   CategoryManagementItem,
   AppInfoSection, 
   AboutSection 
 } from '../components/settings';
+import { DataExportCard } from '../components/settings/DataExportCard';
 import { useTheme } from '../context/ThemeContext';
-import { dataExportService } from '../services';
 import { useNavigation } from '@react-navigation/native';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Settings'>;
@@ -20,7 +19,6 @@ type Props = BottomTabScreenProps<RootTabParamList, 'Settings'>;
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, isDarkMode, toggleTheme } = useTheme();
   const stackNavigation = useNavigation();
-  const [isExporting, setIsExporting] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
@@ -33,24 +31,6 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     stackNavigation.navigate('Categories' as never);
   };
 
-  const handleExportData = async () => {
-    setIsExporting(true);
-    try {
-      const fileUri = await dataExportService.exportTransactionsToCSV();
-      await dataExportService.shareExportFile(fileUri);
-      
-      showSnackbar('Data exported successfully!');
-    } catch (error) {
-      console.error('Export failed:', error);
-      Alert.alert(
-        'Export Failed',
-        error instanceof Error ? error.message : 'An unknown error occurred during export.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsExporting(false);
-    }
-  };
 
   const showSnackbar = (message: string) => {
     setSnackbarMessage(message);
@@ -77,10 +57,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         {/* Data Management Section */}
         <SettingsSection title="Data Management">
           <CategoryManagementItem onPress={handleManageCategories} />
-          <DataExportItem
-            onExport={handleExportData}
-            isExporting={isExporting}
-          />
+          <DataExportCard />
         </SettingsSection>
 
         {/* About Section */}

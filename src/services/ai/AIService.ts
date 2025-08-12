@@ -12,6 +12,9 @@ import {
 import { DatabaseService } from '../DatabaseService';
 import { BudgetAnalyticsService } from '../BudgetAnalyticsService';
 import { BudgetCalculationService } from '../BudgetCalculationService';
+import { Category } from '../../types/Category';
+import { getAIBackendClient, AIBackendClient, AIQueryResponse } from './AIBackendClient';
+// Keep these for fallback only
 import HuggingFaceModelManager from './HuggingFaceModelManager';
 import LangChainOrchestrator from './LangChainOrchestrator';
 import AIQueryProcessor from './AIQueryProcessor';
@@ -21,8 +24,10 @@ import PrivacyManager from './PrivacyManager';
 export class AIService {
   private static instance: AIService;
   private initialized = false;
+  private backendClient: AIBackendClient;
   private conversationManager: ConversationManager;
   private privacyManager: PrivacyManager;
+  private backendConnected = false;
 
   public static getInstance(): AIService {
     if (!AIService.instance) {
@@ -33,6 +38,7 @@ export class AIService {
 
   private constructor() {
     // Private constructor for singleton pattern
+    this.backendClient = getAIBackendClient();
     this.conversationManager = ConversationManager.getInstance();
     this.privacyManager = PrivacyManager.getInstance();
   }
@@ -41,94 +47,196 @@ export class AIService {
     if (this.initialized) return;
 
     try {
-      // Initialize AI components
-      await HuggingFaceModelManager.initialize();
-      await LangChainOrchestrator.initialize();
+      // Test backend connection first
+      console.log('🔗 Testing AI backend connection...');
+      const connectionStatus = await this.backendClient.getConnectionStatus();
+      console.log('🔍 Connection status:', connectionStatus);
+      const isBackendConnected = connectionStatus.connected;
+      
+      if (isBackendConnected) {
+        console.log('✅ Backend connected - using AI backend with real database data');
+        this.backendConnected = true;
+      } else {
+        console.log('⚠️ Backend not available - will use fallback mode with local database');
+        this.backendConnected = false;
+      }
+
+      // Initialize database (still needed for fallback mode)
+      const databaseService = DatabaseService.getInstance();
+      await databaseService.initialize();
+      console.log('Database initialized for AI service');
+
+      // If backend is not connected, initialize fallback AI components
+      if (!this.backendConnected) {
+        try {
+          await HuggingFaceModelManager.initialize();
+          console.log('HuggingFace models initialized (fallback mode)');
+          
+          await LangChainOrchestrator.initialize();
+          console.log('LangChain orchestrator initialized (fallback mode)');
+        } catch (error) {
+          console.warn('Fallback AI components failed to initialize:', error);
+        }
+      }
+      
       await this.conversationManager.initialize();
+      console.log('Conversation manager initialized');
+      
       await this.privacyManager.initialize();
+      console.log('Privacy manager initialized');
       
       this.initialized = true;
+      console.log(`✅ AIService initialized ${this.backendConnected ? 'with backend integration' : 'in fallback mode'}`);
     } catch (error) {
       console.error('AIService initialization failed:', error);
-      // Don't throw - fall back to placeholder responses
+      this.initialized = false;
+      this.backendConnected = false;
     }
   }
 
   /**
    * Process a user query and return an AI response
-   * Enhanced with actual AI integration while maintaining backward compatibility
+   * Routes through backend or falls back to local processing
    */
   public async processQuery(
     query: string, 
     context?: AIQueryContext
   ): Promise<AIResponse> {
-    // Try AI processing first if initialized
+    // Ensure initialization before processing
+    if (!this.initialized) {
+      console.log('AIService not initialized, attempting initialization...');
+      await this.initialize();
+    }
+
+    // Try backend processing first if connected
+    if (this.backendConnected) {
+      try {
+        console.log('🔀 Routing query to AI backend:', query);
+        return await this.processQueryWithBackend(query, context);
+      } catch (error) {
+        console.error('Backend processing failed, falling back to local AI:', error);
+        this.backendConnected = false; // Mark backend as disconnected
+      }
+    }
+
+    // Try local AI processing if backend failed or not available
     if (this.initialized) {
       try {
+        console.log('🔄 Using local AI processing:', query);
         return await this.processQueryWithAI(query, context);
       } catch (error) {
-        console.error('AI processing failed, falling back to placeholder:', error);
+        console.error('Local AI processing failed, falling back to database-only responses:', error);
       }
     }
 
     // Fallback to original placeholder logic
     await this.delay(1500);
 
-    // Placeholder response logic based on query content
+    // Enhanced fallback response logic with real database data
     const lowerQuery = query.toLowerCase();
 
-    if (lowerQuery.includes('budget') || lowerQuery.includes('spending')) {
-      return {
-        content: "I can see you're asking about your budget. Here's a summary of your current budget status. This is a placeholder response that will be replaced with actual AI-generated content.",
-        embeddedData: {
-          type: 'budget_card',
-          title: 'Budget Overview',
-          data: {
-            // Placeholder data - will integrate with DatabaseService
-            totalBudget: 3000,
-            totalSpent: 2100,
-            remainingBudget: 900,
-          }
-        },
-        suggestedActions: [
-          'View detailed budget breakdown',
-          'Set up budget alerts',
-          'Review spending patterns'
-        ]
-      };
-    }
+    try {
+      // Get actual financial data for fallback responses
+      const databaseService = DatabaseService.getInstance();
+      await databaseService.initialize();
 
-    if (lowerQuery.includes('transaction') || lowerQuery.includes('recent')) {
-      return {
-        content: "Here are your recent transactions. This placeholder will be replaced with intelligent analysis of your spending patterns.",
-        embeddedData: {
-          type: 'transaction_list',
-          title: 'Recent Transactions',
-          data: {
-            // Placeholder data - will integrate with DatabaseService
-            transactions: []
-          }
-        }
-      };
-    }
+      if (lowerQuery.includes('budget') || lowerQuery.includes('spending')) {
+        const budgets = await databaseService.getBudgetsWithDetails();
+        const currentMonth = new Date();
+        const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        const monthTransactions = await databaseService.getTransactions(undefined, 'expense', monthStart, currentMonth);
+        
+        const totalSpent = monthTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const totalBudgeted = budgets.reduce((sum, b) => sum + b.amount, 0);
+        
+        return {
+          content: `Based on your current data, you've spent $${(totalSpent / 100).toFixed(2)} this month${totalBudgeted > 0 ? ` out of a total budget of $${(totalBudgeted / 100).toFixed(2)}` : ''}. ${budgets.length === 0 ? 'Consider setting up budgets to track your spending better.' : ''}`,
+          message: `Based on your current data, you've spent $${(totalSpent / 100).toFixed(2)} this month${totalBudgeted > 0 ? ` out of a total budget of $${(totalBudgeted / 100).toFixed(2)}` : ''}. ${budgets.length === 0 ? 'Consider setting up budgets to track your spending better.' : ''}`,
+          confidence: 0.9,
+          queryType: 'budget_status' as QueryType,
+          embeddedData: budgets.length > 0 ? {
+            type: 'BudgetCard',
+            title: 'Budget Overview',
+            budgetData: budgets[0],
+            progressData: {
+              spent: budgets[0].spent_amount || 0,
+              remaining: budgets[0].amount - (budgets[0].spent_amount || 0),
+              percentage: budgets[0].percentage || 0,
+            },
+            size: 'compact',
+            chatContext: true,
+          } : undefined,
+          suggestedActions: [
+            'View detailed budget breakdown',
+            'Set up budget alerts',
+            'Review spending patterns'
+          ]
+        };
+      }
 
-    if (lowerQuery.includes('category') || lowerQuery.includes('breakdown')) {
-      return {
-        content: "I've analyzed your spending by category. This is a placeholder response that will show actual category analysis.",
-        embeddedData: {
-          type: 'category_breakdown',
-          title: 'Spending by Category',
-          data: {
-            // Placeholder data - will integrate with DatabaseService
-            categories: []
-          }
-        }
-      };
+      if (lowerQuery.includes('transaction') || lowerQuery.includes('recent')) {
+        const recentTransactions = await databaseService.getTransactionsWithCategories(undefined, undefined, undefined, undefined);
+        const last10 = recentTransactions.slice(0, 10);
+        
+        return {
+          content: `Here are your ${last10.length} most recent transactions${last10.length === 0 ? '. You haven\'t recorded any transactions yet - start by adding your first expense!' : ', showing real data from your account.'}`,
+          message: `Here are your ${last10.length} most recent transactions${last10.length === 0 ? '. You haven\'t recorded any transactions yet - start by adding your first expense!' : ', showing real data from your account.'}`,
+          confidence: 0.9,
+          queryType: 'transaction_search' as QueryType,
+          embeddedData: last10.length > 0 ? {
+            type: 'TransactionList',
+            title: 'Recent Transactions',
+            transactions: last10,
+            totalCount: recentTransactions.length,
+            size: 'compact',
+            chatContext: true,
+          } : undefined
+        };
+      }
+
+      if (lowerQuery.includes('category') || lowerQuery.includes('breakdown')) {
+        const transactions = await databaseService.getTransactionsWithCategories(undefined, 'expense');
+        const categoryTotals = transactions.reduce((acc, t) => {
+          const category = t.category_name || 'Uncategorized';
+          acc[category] = (acc[category] || 0) + t.amount;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        const chartData = Object.entries(categoryTotals).map(([name, amount]) => ({
+          x: name,
+          y: amount / 100, // Convert to dollars
+          label: name,
+        }));
+        
+        return {
+          content: `I've analyzed your spending across ${Object.keys(categoryTotals).length} categories${chartData.length === 0 ? '. No expenses found - start by adding some transactions to see category breakdowns.' : ', showing your actual spending patterns.'}`,
+          message: `I've analyzed your spending across ${Object.keys(categoryTotals).length} categories${chartData.length === 0 ? '. No expenses found - start by adding some transactions to see category breakdowns.' : ', showing your actual spending patterns.'}`,
+          confidence: 0.9,
+          queryType: 'spending_summary' as QueryType,
+          embeddedData: chartData.length > 0 ? {
+            type: 'CategoryBreakdownChart',
+            title: 'Spending by Category',
+            chartData,
+            metadata: {
+              totalAmount: Object.values(categoryTotals).reduce((sum, amount) => sum + amount, 0),
+              currency: 'USD',
+              categories: []
+            },
+            size: 'compact',
+            chatContext: true,
+          } : undefined
+        };
+      }
+    } catch (error) {
+      console.error('Error getting database data for fallback response:', error);
     }
 
     // Default response
     return {
+      message: `Thank you for your question: "${query}". This is a placeholder response from the AI assistant. In the full implementation, I'll provide intelligent insights about your finances, spending patterns, and budget recommendations.`,
       content: `Thank you for your question: "${query}". This is a placeholder response from the AI assistant. In the full implementation, I'll provide intelligent insights about your finances, spending patterns, and budget recommendations.`,
+      confidence: 0.5,
+      queryType: 'unknown' as QueryType,
       suggestedActions: [
         'Ask about your monthly budget',
         'Review recent transactions',
@@ -174,7 +282,92 @@ export class AIService {
   }
 
   /**
-   * New AI processing method using HuggingFace and LangChain
+   * Process query using the AI backend (with real database integration)
+   */
+  private async processQueryWithBackend(query: string, context?: AIQueryContext): Promise<AIResponse> {
+    try {
+      const backendResponse: AIQueryResponse = await this.backendClient.processQuery(query, context);
+      
+      // Convert backend response to frontend format
+      return {
+        content: backendResponse.message,
+        message: backendResponse.message,
+        confidence: backendResponse.confidence,
+        queryType: this.mapBackendQueryType(backendResponse.query_type),
+        suggestedActions: backendResponse.suggested_actions || [],
+        // Convert embedded data if present
+        embeddedData: backendResponse.embedded_data ? 
+          this.convertBackendEmbeddedData(backendResponse.embedded_data) : undefined,
+      };
+    } catch (error) {
+      console.error('Backend query processing failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert backend embedded data to frontend format
+   */
+  private convertBackendEmbeddedData(backendData: any): EmbeddedFinancialData | undefined {
+    if (!backendData) return undefined;
+
+    switch (backendData.component_type) {
+      case 'BudgetCard':
+      case 'budget_card':
+        return {
+          type: 'BudgetCard',
+          title: backendData.title,
+          budgetData: backendData.data.budget,
+          progressData: backendData.data.progress,
+          size: backendData.size === 'compact' ? 'compact' : 'full',
+          chatContext: true,
+        } as EmbeddedBudgetCardData;
+
+      case 'TransactionList':
+      case 'transaction_list':
+        return {
+          type: 'TransactionList',
+          title: backendData.title,
+          transactions: backendData.data.transactions,
+          totalCount: backendData.data.total_count,
+          size: backendData.size === 'compact' ? 'compact' : 'full',
+          chatContext: true,
+        } as EmbeddedTransactionListData;
+
+      case 'CategoryBreakdownChart':
+      case 'category_chart':
+        return {
+          type: 'CategoryBreakdownChart',
+          title: backendData.title,
+          chartData: backendData.data.chart_data,
+          metadata: backendData.data.metadata,
+          size: backendData.size === 'compact' ? 'compact' : 'full',
+          chatContext: true,
+        } as EmbeddedChartData;
+
+      default:
+        console.warn('Unknown backend embedded data type:', backendData.component_type);
+        return undefined;
+    }
+  }
+
+  /**
+   * Map backend query types to frontend types
+   */
+  private mapBackendQueryType(backendType: string): QueryType {
+    const typeMap: Record<string, QueryType> = {
+      'spending_summary': 'spending_summary',
+      'budget_status': 'budget_status', 
+      'balance_inquiry': 'balance_inquiry',
+      'transaction_search': 'transaction_search',
+      'unknown': 'unknown',
+    };
+    
+    return typeMap[backendType] || 'unknown';
+  }
+
+  /**
+   * New AI processing method using HuggingFace and LangChain (fallback)
    */
   private async processQueryWithAI(query: string, context?: AIQueryContext): Promise<AIResponse> {
     try {
@@ -514,7 +707,50 @@ export class AIService {
   }
 
   public isInitialized(): boolean {
-    return this.initialized && HuggingFaceModelManager.isInitialized();
+    return this.initialized;
+  }
+
+  public isBackendConnected(): boolean {
+    return this.backendConnected;
+  }
+
+  public async getStatus(): Promise<{
+    initialized: boolean;
+    backendConnected: boolean;
+    mode: 'backend' | 'local-ai' | 'database-only';
+  }> {
+    let mode: 'backend' | 'local-ai' | 'database-only' = 'database-only';
+    
+    if (this.backendConnected) {
+      mode = 'backend';
+    } else if (this.initialized && HuggingFaceModelManager.isInitialized()) {
+      mode = 'local-ai';
+    }
+
+    return {
+      initialized: this.initialized,
+      backendConnected: this.backendConnected,
+      mode
+    };
+  }
+
+  public async reconnectToBackend(): Promise<boolean> {
+    try {
+      const isConnected = await this.backendClient.testConnectivity();
+      this.backendConnected = isConnected;
+      
+      if (isConnected) {
+        console.log('✅ Reconnected to AI backend');
+      } else {
+        console.log('❌ Failed to reconnect to AI backend');
+      }
+      
+      return isConnected;
+    } catch (error) {
+      console.error('Error testing backend connectivity:', error);
+      this.backendConnected = false;
+      return false;
+    }
   }
 
   /**
@@ -525,6 +761,12 @@ export class AIService {
     context?: AIQueryContext
   ): Promise<AIResponseWithEmbedding> {
     try {
+      // Ensure initialization before processing
+      if (!this.initialized) {
+        console.log('AIService not initialized for enhanced processing, attempting initialization...');
+        await this.initialize();
+      }
+
       // Check for follow-up query and enhance context
       const conversationContext = this.conversationManager.getConversationContext();
       let enhancedContext = context;
@@ -640,20 +882,33 @@ export class AIService {
 
         case 'CategoryBreakdownChart':
           // Get category breakdown data
-          const analyticsService = new BudgetAnalyticsService(DatabaseService.getInstance());
+          const databaseService = DatabaseService.getInstance();
+          const budgetCalculationService = new BudgetCalculationService(databaseService);
+          const analyticsService = new BudgetAnalyticsService(
+            databaseService,
+            budgetCalculationService
+          );
           const categoryData = await analyticsService.getCategoryPerformanceAnalysis();
           return {
             type: 'CategoryBreakdownChart',
             chartData: categoryData.map(cat => ({
               x: cat.category_name,
-              y: cat.total_spent / 100, // Convert cents to dollars
+              y: cat.spent_amount / 100, // Convert cents to dollars
               label: cat.category_name,
               color: cat.category_color,
             })),
             metadata: {
-              totalAmount: categoryData.reduce((sum, cat) => sum + cat.total_spent, 0),
+              totalAmount: categoryData.reduce((sum, cat) => sum + cat.spent_amount, 0),
               currency: 'USD',
               period: 'current_month',
+              categories: categoryData.map(cat => ({
+                id: cat.category_id,
+                name: cat.category_name,
+                color: cat.category_color,
+                icon: cat.category_icon,
+                created_at: new Date(),
+                updated_at: new Date()
+              })),
             },
             size: 'full',
             chatContext: true,

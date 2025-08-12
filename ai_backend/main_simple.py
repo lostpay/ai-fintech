@@ -116,19 +116,43 @@ async def process_query(request: dict):
         if not query:
             raise HTTPException(status_code=400, detail="Query is required")
         
-        # Process using AI service
+        # Process using AI service (which now uses real database data!)
         response = await ai_service.process_query(query)
         
-        # Enhance the response with more details
+        # The AI service already provides enhanced responses with real data
         enhanced_message = response.message
         
-        # Add more context based on query type
-        if "dining" in query.lower() or "restaurant" in query.lower():
-            enhanced_message += "\n\nYou've spent $450 on dining this month across 12 transactions. Your dining budget is $500, so you have $50 remaining. Popular places: McDonald's ($89), Starbucks ($76), Pizza Hut ($45)."
+        # Get real financial data for embedded components
+        db_health = ai_service.get_database_health()
+        embedded_data = None
+        
+        if response.embedded_data:
+            embedded_data = {
+                "component_type": response.embedded_data.component_type,
+                "title": response.embedded_data.title,
+                "data": response.embedded_data.data,
+                "size": response.embedded_data.size
+            }
         elif "budget" in query.lower():
-            enhanced_message += "\n\nBudget Overview:\n• Dining: $450/$500 (90% used)\n• Groceries: $320/$400 (80% used)\n• Entertainment: $150/$200 (75% used)\n• Transport: $180/$250 (72% used)"
-        elif "transaction" in query.lower():
-            enhanced_message += "\n\nRecent Transactions:\n• $23.45 - McDonald's (Dining)\n• $89.12 - Whole Foods (Groceries)\n• $15.99 - Netflix (Entertainment)\n• $45.00 - Uber (Transport)\n• $12.50 - Starbucks (Dining)"
+            # Get real budget data for budget queries
+            try:
+                budgets = ai_service.database.get_budgets_with_details()
+                if budgets:
+                    budget = budgets[0]  # Show first budget
+                    embedded_data = {
+                        "component_type": "BudgetCard",
+                        "title": f"{budget.category_name} Budget",
+                        "data": {
+                            "category": budget.category_name,
+                            "budgeted": budget.amount,
+                            "spent": budget.spent_amount,
+                            "remaining": budget.remaining_amount,
+                            "percentage": budget.percentage_used
+                        },
+                        "size": "compact"
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to get real budget data: {e}")
         
         return {
             "message": enhanced_message,
@@ -136,18 +160,8 @@ async def process_query(request: dict):
             "query_type": response.query_type.value,
             "processing_type": response.processing_type.value,
             "suggested_actions": response.suggested_actions or [],
-            "embedded_data": {
-                "component_type": "BudgetCard",
-                "title": "Budget Status",
-                "data": {
-                    "category": "Dining",
-                    "budgeted": 500,
-                    "spent": 450,
-                    "remaining": 50,
-                    "percentage": 90
-                },
-                "size": "compact"
-            }
+            "embedded_data": embedded_data,
+            "database_status": db_health.get("status", "unknown")
         }
         
     except Exception as e:

@@ -169,6 +169,13 @@ export class ConversationManager {
   }
 
   /**
+   * Get conversation messages
+   */
+  getMessages(): ExtendedChatMessage[] {
+    return this.activeConversation?.messages || [];
+  }
+
+  /**
    * Handle follow-up query with conversation context
    */
   async handleFollowUpQuery(
@@ -224,6 +231,7 @@ export class ConversationManager {
       ...previousContext,
       currentScreen: 'ai_chat',
       sessionId: this.activeConversation.id,
+      timestamp: new Date(),
       recentTransactions: referenceData.transactions?.data?.transactions || [],
       activeBudgets: referenceData.budgets || [],
       userPreferences: {

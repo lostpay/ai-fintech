@@ -76,14 +76,25 @@ export interface DatabaseStats {
   last_transaction_date?: string;
 }
 
-// Configuration
-const DEFAULT_CONFIG = {
-  baseUrl: Platform.select({
-    ios: 'http://localhost:8000/api',
-    android: 'http://192.168.1.12:8000/api', // Replace with YOUR computer's IP
+// Configuration with environment detection
+const getBaseUrl = () => {
+  // Check if we're in web environment (Expo web, browser)
+  if (typeof window !== 'undefined' && window.location) {
+    return 'http://localhost:8000/api'; // Web/browser environment
+  }
+  
+  // Mobile platform detection
+  return Platform.select({
+    ios: 'http://localhost:8000/api', // iOS simulator uses localhost
+    android: 'http://192.168.1.12:8000/api', // Real Android device - your computer's IP
+    web: 'http://localhost:8000/api', // Web browser
     default: 'http://localhost:8000/api'
-  }),
-  timeout: 30000, // 30 seconds
+  });
+};
+
+const DEFAULT_CONFIG = {
+  baseUrl: getBaseUrl(),
+  timeout: 10000, // 10 seconds
   retries: 3,
   retryDelay: 1000
 };
@@ -100,6 +111,10 @@ export class AIBackendClient {
     this.timeout = config.timeout || DEFAULT_CONFIG.timeout;
     this.retries = config.retries || DEFAULT_CONFIG.retries;
     this.retryDelay = config.retryDelay || DEFAULT_CONFIG.retryDelay;
+    
+    console.log('🌐 AIBackendClient initialized with baseUrl:', this.baseUrl);
+    console.log('🔧 Timeout:', this.timeout, 'Retries:', this.retries);
+    
     this.initializeSession();
   }
 
@@ -130,8 +145,16 @@ export class AIBackendClient {
     retryCount = 0
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    
+    if (retryCount === 0) {
+      console.log(`🚀 Making request to: ${url}`);
+    }
+    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const timeoutId = setTimeout(() => {
+      console.log(`⏰ Request timeout after ${this.timeout}ms: ${url}`);
+      controller.abort();
+    }, this.timeout);
 
     try {
       const response = await fetch(url, {
@@ -147,9 +170,14 @@ export class AIBackendClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        console.log(`❌ HTTP Error ${response.status}: ${response.statusText} for ${url}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      if (retryCount === 0) {
+        console.log(`✅ Request successful: ${url}`);
+      }
+      
       return await response.json();
     } catch (error) {
       clearTimeout(timeoutId);
@@ -349,11 +377,42 @@ export class AIBackendClient {
    */
   async testConnectivity(): Promise<boolean> {
     try {
-      await this.makeRequest('/ping');
+      console.log('🔍 Testing backend connectivity...');
+      const result = await this.makeRequest('/ping');
+      console.log('✅ Backend connectivity test successful:', result);
       return true;
     } catch (error) {
-      console.error('Backend connectivity test failed:', error);
+      console.error('❌ Backend connectivity test failed:', error);
+      console.log('🔧 Attempted URL:', `${this.baseUrl}/ping`);
       return false;
+    }
+  }
+
+  /**
+   * Get detailed connection status for debugging
+   */
+  async getConnectionStatus(): Promise<{
+    url: string;
+    connected: boolean;
+    error?: string;
+    timestamp: string;
+  }> {
+    const timestamp = new Date().toISOString();
+    
+    try {
+      await this.makeRequest('/ping');
+      return {
+        url: this.baseUrl,
+        connected: true,
+        timestamp
+      };
+    } catch (error) {
+      return {
+        url: this.baseUrl,
+        connected: false,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp
+      };
     }
   }
 

@@ -62,31 +62,6 @@ export const ThemeToggleItem: React.FC<ThemeToggleItemProps> = ({
   />
 );
 
-interface DataExportItemProps {
-  onExport: () => void;
-  isExporting: boolean;
-}
-
-export const DataExportItem: React.FC<DataExportItemProps> = ({
-  onExport,
-  isExporting,
-}) => (
-  <SettingsListItem
-    title="Export Data"
-    description="Export your transactions to CSV"
-    icon="download"
-    onPress={onExport}
-    disabled={isExporting}
-    testID="export-data-item"
-    right={
-      isExporting ? (
-        <ActivityIndicator size="small" />
-      ) : (
-        <List.Icon icon="chevron-right" />
-      )
-    }
-  />
-);
 
 interface CategoryManagementItemProps {
   onPress: () => void;

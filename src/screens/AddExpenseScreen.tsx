@@ -78,6 +78,9 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const fadeInAnim = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   
+  // Keep track of shown alert IDs to prevent infinite loops
+  const shownAlertIds = useRef(new Set<string>()).current;
+  
   // Database service
   const databaseService = DatabaseService.getInstance();
   
@@ -114,14 +117,16 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     // Get the most recent alerts (they will be ordered by created_at)
     const recentAlerts = alerts.slice(-3); // Show up to 3 most recent alerts
     
-    if (recentAlerts.length > 0 && !loading) {
-      // Only show alerts if we're not currently showing success message
-      // and there are new alerts that weren't already shown
+    if (recentAlerts.length > 0 && !loading && !successVisible) {
+      // Only show alerts that haven't been shown yet
       const newAlerts = recentAlerts.filter(alert => 
-        !currentAlerts.find(existing => existing.id === alert.id)
+        !shownAlertIds.has(alert.id)
       );
       
       if (newAlerts.length > 0) {
+        // Mark these alerts as shown
+        newAlerts.forEach(alert => shownAlertIds.add(alert.id));
+        
         setCurrentAlerts(newAlerts);
         setShowAlerts(true);
         
@@ -156,7 +161,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
         }
       }
     }
-  }, [alerts, loading, currentAlerts, slideUpAnim, fadeInAnim, backdropOpacity]);
+  }, [alerts, loading, successVisible, slideUpAnim, fadeInAnim, backdropOpacity]);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -175,7 +180,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     loadCategories();
 
     // Note: No cleanup needed for singleton database service
-  }, []);
+  }, [databaseService]);
 
   const handleSubmit = async () => {
     await submitForm();
@@ -236,21 +241,27 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 
   const handleDismissAlert = (alertId: string) => {
     // Remove the specific alert from current alerts
-    setCurrentAlerts(prev => prev.filter(alert => alert.id !== alertId));
-    
-    // If no more alerts, animate out and hide the alert container
-    if (currentAlerts.length <= 1) {
-      animateAlertsOut(() => {
-        setShowAlerts(false);
-        setCurrentAlerts([]);
-      });
-    }
+    setCurrentAlerts(prev => {
+      const filtered = prev.filter(alert => alert.id !== alertId);
+      
+      // If no more alerts after filtering, animate out and hide
+      if (filtered.length === 0) {
+        animateAlertsOut(() => {
+          setShowAlerts(false);
+          setCurrentAlerts([]);
+        });
+      }
+      
+      return filtered;
+    });
   };
 
   const handleDismissAllAlerts = () => {
     animateAlertsOut(() => {
       setShowAlerts(false);
       setCurrentAlerts([]);
+      // Clear the shown alerts tracking to allow them to show again if needed
+      shownAlertIds.clear();
     });
   };
 

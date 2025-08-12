@@ -2,6 +2,9 @@ import { Transaction } from '../Transaction';
 import { Budget } from '../Budget';
 import { Category } from '../Category';
 
+// Processing type for AI responses
+export type ProcessingType = 'on-device' | 'hugging-face';
+
 /**
  * Types for embedding financial components within AI chat responses
  */

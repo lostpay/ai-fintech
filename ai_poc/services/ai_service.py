@@ -12,7 +12,8 @@ from models.data_types import (
     QueryType, ProcessingType, AIResponse, AIQueryContext, 
     FinancialData, EmbeddedComponentData
 )
-from services.mock_database import MockDatabaseService
+from services.sqlite_database import SQLiteDatabaseService
+from config.database_config import get_database_config
 from services.huggingface_manager import HuggingFaceManager
 from services.query_processor import QueryProcessor
 
@@ -23,7 +24,17 @@ class AIService:
     
     def __init__(self, api_key: str):
         # Initialize components
-        self.database = MockDatabaseService()
+        db_config = get_database_config()
+        self.database = SQLiteDatabaseService(db_config['database_path'])
+        
+        # Connect to database
+        try:
+            self.database.connect()
+            logger.info(f"Connected to React Native database: {db_config['database_path']}")
+        except Exception as e:
+            logger.warning(f"Failed to connect to React Native database: {e}")
+            logger.warning("AI service will operate with limited functionality")
+        
         self.huggingface = HuggingFaceManager(api_key)
         self.query_processor = QueryProcessor()
         
@@ -52,8 +63,22 @@ class AIService:
             # Step 2: Classify query type using AI
             query_type, confidence = self.huggingface.classify_query(query)
             
+            # Fallback classification based on keywords if confidence is low
+            if confidence < 0.6:
+                query_type = self._classify_by_keywords(query, parsed_query)
+                confidence = 0.7  # Set reasonable confidence for keyword-based classification
+            
             # Step 3: Get relevant financial data
             financial_data = await self._get_financial_data(query_type, parsed_query)
+            logger.info(f"🗃️ Retrieved financial data with keys: {list(financial_data.keys())}")
+            
+            # Debug: Log actual data values for verification
+            if "total_amount" in financial_data:
+                logger.info(f"💰 Total amount: ${financial_data['total_amount']:.2f}")
+            if "category_breakdown" in financial_data:
+                logger.info(f"📊 Categories found: {list(financial_data['category_breakdown'].keys())}")
+            if "transactions" in financial_data:
+                logger.info(f"📝 Transaction count: {len(financial_data['transactions'])}")
             
             # Step 4: Generate AI response
             ai_message = self.huggingface.generate_financial_response(
@@ -194,6 +219,34 @@ class AIService:
             logger.error(f"Error getting financial data: {e}")
             return {}
     
+    def _classify_by_keywords(self, query: str, parsed_query: Dict[str, Any]) -> QueryType:
+        """Fallback classification based on keywords when AI classification fails"""
+        query_lower = query.lower()
+        keywords = parsed_query.get('keywords', [])
+        
+        # Check for transaction/spending keywords
+        transaction_keywords = ['transaction', 'spending', 'spent', 'latest', 'recent', 'last', 'show', 'purchased']
+        if any(keyword in query_lower for keyword in transaction_keywords):
+            return QueryType.TRANSACTION_SEARCH
+            
+        # Check for budget keywords
+        budget_keywords = ['budget', 'budgets', 'budgeting', 'allocated', 'limit', 'allowance']
+        if any(keyword in query_lower for keyword in budget_keywords):
+            return QueryType.BUDGET_STATUS
+            
+        # Check for balance/total keywords  
+        balance_keywords = ['balance', 'total', 'sum', 'amount', 'money', 'have']
+        if any(keyword in query_lower for keyword in balance_keywords):
+            return QueryType.BALANCE_INQUIRY
+            
+        # Check for spending summary keywords
+        summary_keywords = ['summary', 'breakdown', 'categories', 'analysis', 'overview']
+        if any(keyword in query_lower for keyword in summary_keywords):
+            return QueryType.SPENDING_SUMMARY
+            
+        # Default fallback
+        return QueryType.UNKNOWN
+    
     def _create_embedded_component(self, financial_data: Dict[str, Any], query_type: QueryType) -> Optional[EmbeddedComponentData]:
         """Create embedded component data for rich responses"""
         try:
@@ -287,3 +340,28 @@ class AIService:
             results["overall_status"] = "failed"
         
         return results
+    
+    def get_database_health(self) -> Dict[str, Any]:
+        """Get database health status and statistics"""
+        try:
+            return self.database.check_database_health()
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "connection_status": "failed"
+            }
+    
+    def cleanup(self):
+        """Cleanup resources"""
+        try:
+            if self.database:
+                self.database.disconnect()
+                logger.info("Database connection closed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+    
+    def __del__(self):
+        """Destructor - ensure cleanup"""
+        self.cleanup()

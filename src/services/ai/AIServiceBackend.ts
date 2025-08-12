@@ -81,7 +81,10 @@ export class AIServiceBackend {
       
       // Always provide a fallback response
       return {
+        message: `I encountered an issue processing your question: "${query}". Please try rephrasing your question or check your connection.`,
         content: `I encountered an issue processing your question: "${query}". Please try rephrasing your question or check your connection.`,
+        confidence: 0.1,
+        queryType: 'unknown' as QueryType,
         suggestedActions: [
           'Try asking about your spending',
           'Ask about budget status', 
@@ -102,8 +105,8 @@ export class AIServiceBackend {
       const backendResponse = await this.backendClient.processQuery(query, {
         session_id: this.backendClient.getSessionId(),
         context: context ? {
-          conversation_history: context.conversation_history,
-          last_query_type: context.last_query_type
+          conversation_history: context.previousQueries || [],
+          last_query_type: context.currentScreen || 'unknown'
         } : {}
       });
 
@@ -142,6 +145,7 @@ export class AIServiceBackend {
     else if (lowerQuery.includes('balance')) queryType = 'balance_inquiry';
 
     return {
+      message: `I'm currently operating in offline mode. Your query about "${query}" has been noted, but I'm unable to provide detailed financial analysis without the AI backend connection.`,
       content: `I'm currently operating in offline mode. Your query about "${query}" has been noted, but I'm unable to provide detailed financial analysis without the AI backend connection.`,
       queryType,
       confidence: 0.5,

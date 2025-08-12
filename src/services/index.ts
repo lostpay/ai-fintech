@@ -1,6 +1,9 @@
 // Services barrel export
 import { DatabaseService } from './DatabaseService';
-import { DataExportService } from './DataExportService';
+import { DataExportService, dataExportService } from './DataExportService';
+import { FileSystemService } from './FileSystemService';
+import { ShareService } from './ShareService';
+import { ExportProgressService } from './ExportProgressService';
 import { BudgetCalculationService } from './BudgetCalculationService';
 import { BudgetAlertService } from './BudgetAlertService';
 import { BudgetAnalyticsService } from './BudgetAnalyticsService';
@@ -8,8 +11,8 @@ import { BudgetAnalyticsService } from './BudgetAnalyticsService';
 // Get the singleton instance of DatabaseService
 export const databaseService = DatabaseService.getInstance();
 
-// Create a singleton instance of DataExportService
-export const dataExportService = new DataExportService(databaseService);
+// Export the singleton instance of DataExportService (created in DataExportService.ts)
+export { dataExportService };
 
 // Create a singleton instance of BudgetCalculationService
 export const budgetCalculationService = new BudgetCalculationService(databaseService);
@@ -23,8 +26,17 @@ export const budgetAnalyticsService = new BudgetAnalyticsService(databaseService
 // Export the service classes as well for testing
 export { 
   DatabaseService, 
-  DataExportService, 
+  DataExportService,
+  FileSystemService,
+  ShareService,
+  ExportProgressService,
   BudgetCalculationService, 
   BudgetAlertService,
   BudgetAnalyticsService 
 };
+
+// Export types
+export type { ExportOptions, ExportResult, ExportMetadata } from './DataExportService';
+export type { SaveFileResult, StorageInfo } from './FileSystemService';
+export type { ShareResult, ShareOptions } from './ShareService';
+export type { ExportProgress, ExportProgressCallback } from './ExportProgressService';

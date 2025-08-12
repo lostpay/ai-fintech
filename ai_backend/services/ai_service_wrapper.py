@@ -9,13 +9,24 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 
-# Add AI PoC modules to Python path (updated for new structure)
-ai_poc_path = Path(__file__).parent.parent / "ai_poc" if (Path(__file__).parent.parent / "ai_poc").exists() else Path(__file__).parent.parent.parent / "ai_poc"
-sys.path.insert(0, str(ai_poc_path))
+# Add AI PoC modules to Python path
+current_dir = Path(__file__).parent.parent  # ai_backend directory
+ai_poc_path = current_dir.parent / "ai_poc"  # ../ai_poc
 
-# Also add the current backend path
-backend_path = Path(__file__).parent.parent
-sys.path.insert(0, str(backend_path))
+if not ai_poc_path.exists():
+    # Try alternative paths
+    possible_paths = [
+        current_dir / "ai_poc",  # ai_backend/ai_poc
+        current_dir.parent / "ai_poc",  # app/ai_poc
+        Path(__file__).parent.parent.parent / "ai_poc",  # up one more level
+    ]
+    for path in possible_paths:
+        if path.exists():
+            ai_poc_path = path
+            break
+
+sys.path.insert(0, str(ai_poc_path))
+sys.path.insert(0, str(current_dir))  # Add backend path
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +35,7 @@ if not ai_poc_path.exists():
     logger.error(f"AI PoC directory not found at: {ai_poc_path}")
 else:
     logger.info(f"AI PoC path: {ai_poc_path}")
-    logger.info(f"Backend path: {backend_path}")
+    logger.info(f"Backend path: {current_dir}")
 
 try:
     # Import AI PoC components
@@ -457,3 +468,24 @@ class AIServiceWrapper:
         except Exception as e:
             logger.error(f"Error converting context: {e}")
             return None
+    
+    def get_database_health(self) -> Dict[str, Any]:
+        """Get database health status"""
+        try:
+            return self.ai_service.get_database_health()
+        except Exception as e:
+            logger.error(f"Error getting database health: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "connection_status": "failed"
+            }
+    
+    def cleanup(self):
+        """Cleanup resources"""
+        try:
+            if hasattr(self, 'ai_service') and self.ai_service:
+                self.ai_service.cleanup()
+                logger.info("AI Service Wrapper cleaned up")
+        except Exception as e:
+            logger.error(f"Error during wrapper cleanup: {e}")

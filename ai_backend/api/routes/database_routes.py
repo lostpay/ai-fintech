@@ -172,3 +172,38 @@ async def execute_database_query(request: DatabaseQueryRequest, req: Request):
     except Exception as e:
         logger.error(f"Error executing database query: {e}")
         raise HTTPException(status_code=500, detail="Database query failed")
+
+@router.get("/database/health")
+async def check_database_health(req: Request):
+    """
+    Check database health and connectivity status
+    """
+    try:
+        ai_service = req.app.state.ai_service()
+        
+        health_status = ai_service.get_database_health()
+        
+        # Determine HTTP status code based on health
+        status_code = 200 if health_status.get("status") == "healthy" else 503
+        
+        return JSONResponse(
+            content={
+                "health": health_status,
+                "timestamp": datetime.now().isoformat()
+            },
+            status_code=status_code
+        )
+        
+    except Exception as e:
+        logger.error(f"Error checking database health: {e}")
+        return JSONResponse(
+            content={
+                "health": {
+                    "status": "error",
+                    "error": str(e),
+                    "connection_status": "failed"
+                },
+                "timestamp": datetime.now().isoformat()
+            },
+            status_code=503
+        )

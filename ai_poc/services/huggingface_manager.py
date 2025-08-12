@@ -42,8 +42,8 @@ class HuggingFaceManager:
             ]
             
             result = self.client.zero_shot_classification(
-                text=query,
-                labels=candidate_labels,
+                query,
+                candidate_labels,
                 model=self.models["classification"]
             )
             
@@ -56,8 +56,24 @@ class HuggingFaceManager:
                 "general question": QueryType.UNKNOWN
             }
             
-            top_label = result["labels"][0]
-            confidence = result["scores"][0]
+            # Handle different response formats from HuggingFace
+            if isinstance(result, dict) and "labels" in result and "scores" in result:
+                top_label = result["labels"][0]
+                confidence = result["scores"][0]
+            elif isinstance(result, list) and len(result) > 0:
+                # Sometimes HuggingFace returns a list format
+                top_result = result[0]
+                if isinstance(top_result, dict):
+                    top_label = top_result.get("label", "general question")
+                    confidence = top_result.get("score", 0.5)
+                else:
+                    top_label = "general question"
+                    confidence = 0.5
+            else:
+                # Fallback for unexpected format
+                top_label = "general question"
+                confidence = 0.5
+                
             query_type = label_mapping.get(top_label, QueryType.UNKNOWN)
             
             logger.info(f"Query classified as {query_type.value} with confidence {confidence:.2f}")
@@ -73,28 +89,38 @@ class HuggingFaceManager:
                                   query_type: QueryType) -> str:
         """Generate a conversational response about financial data"""
         try:
+            # Debug: Log the incoming financial data
+            logger.info(f"🔍 Processing query: '{query}' | Type: {query_type.value}")
+            logger.info(f"📋 Raw financial data keys: {list(financial_data.keys())}")
+            
             # Create a context-aware prompt
             context = self._build_financial_context(financial_data, query_type)
+            logger.info(f"📊 Generated context: {context}")
             
             # Try OpenAI GPT OSS model with chat completion first
             try:
+                logger.info("🤖 Attempting GPT OSS model...")
                 response = self._generate_with_gpt_oss(query, context)
                 if response:
+                    logger.info(f"✅ GPT OSS success: {response[:100]}...")
                     return response
+                else:
+                    logger.warning("⚠️ GPT OSS returned empty response")
             except Exception as gpt_error:
-                logger.warning(f"GPT OSS model failed: {gpt_error}")
+                logger.warning(f"❌ GPT OSS model failed: {gpt_error}")
             
             # Fallback to traditional text generation
-            prompt = f"""You are a helpful financial assistant. Based on the user's question and their financial data, provide a clear, concise response.
+            prompt = f"""You are a financial assistant. CRITICAL: You MUST use the specific financial data provided below in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses.
 
 User Question: {query}
 
-Financial Context: {context}
+User's Financial Data: {context}
 
-Response (be conversational and helpful):"""
+Response (use the specific financial data above - include actual numbers and amounts):"""
 
             # Try conversational model
             try:
+                logger.info("🤖 Attempting conversational model...")
                 result = self.client.text_generation(
                     prompt=prompt,
                     model=self.models["conversational"],
@@ -106,13 +132,17 @@ Response (be conversational and helpful):"""
                 
                 response = result.strip()
                 if response:
+                    logger.info(f"✅ Conversational model success: {response[:100]}...")
                     return response
+                else:
+                    logger.warning("⚠️ Conversational model returned empty response")
                     
             except Exception as conv_error:
-                logger.warning(f"Conversational model failed: {conv_error}")
+                logger.warning(f"❌ Conversational model failed: {conv_error}")
             
             # Fallback to general model
             try:
+                logger.info("🤖 Attempting general model...")
                 result = self.client.text_generation(
                     prompt=prompt,
                     model=self.models["general"],
@@ -123,13 +153,19 @@ Response (be conversational and helpful):"""
                 
                 response = result.strip()
                 if response:
+                    logger.info(f"✅ General model success: {response[:100]}...")
                     return response
+                else:
+                    logger.warning("⚠️ General model returned empty response")
                     
             except Exception as gen_error:
-                logger.warning(f"General model failed: {gen_error}")
+                logger.warning(f"❌ General model failed: {gen_error}")
             
             # Final fallback to template response
-            return self._generate_template_response(query, financial_data, query_type)
+            logger.info("🔧 Using template fallback with actual data...")
+            template_response = self._generate_template_response(query, financial_data, query_type)
+            logger.info(f"✅ Template response: {template_response[:100]}...")
+            return template_response
             
         except Exception as e:
             logger.error(f"Response generation failed: {e}")
@@ -141,11 +177,11 @@ Response (be conversational and helpful):"""
             messages = [
                 {
                     "role": "system", 
-                    "content": "You are a helpful financial assistant. Provide clear, concise responses about financial data. Be conversational and supportive."
+                    "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided. Be conversational but always reference the specific financial information given."
                 },
                 {
                     "role": "user",
-                    "content": f"Question: {query}\n\nFinancial Context: {context}\n\nPlease provide a helpful response based on this financial information."
+                    "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response. Include actual dollar amounts and category names."
                 }
             ]
             
@@ -171,13 +207,13 @@ Response (be conversational and helpful):"""
             # Try fallback text generation method
             try:
                 prompt = f"""<|im_start|>system
-You are a helpful financial assistant. Provide clear, concise responses about financial data.<|im_end|>
+You are a financial assistant. CRITICAL: You MUST use the specific financial data provided. Always include actual dollar amounts, category names, and numbers from the user's data. Never give generic responses.<|im_end|>
 <|im_start|>user
 Question: {query}
 
-Financial Context: {context}
+My Financial Data: {context}
 
-Please provide a helpful response based on this financial information.<|im_end|>
+IMPORTANT: Use the specific numbers and details from my financial data above in your response.<|im_end|>
 <|im_start|>assistant"""
                 
                 result = self.client.text_generation(
@@ -199,31 +235,62 @@ Please provide a helpful response based on this financial information.<|im_end|>
             return ""
     
     def _build_financial_context(self, financial_data: Dict[str, Any], query_type: QueryType) -> str:
-        """Build context string from financial data"""
+        """Build context string from financial data with validation"""
         context_parts = []
+        has_real_data = False
         
-        if "total_amount" in financial_data:
+        # Validate and build total spending info
+        if "total_amount" in financial_data and financial_data["total_amount"] > 0:
             context_parts.append(f"Total spending: ${financial_data['total_amount']:.2f}")
+            has_real_data = True
         
-        if "category_breakdown" in financial_data:
+        # Validate and build category breakdown
+        if "category_breakdown" in financial_data and financial_data["category_breakdown"]:
             top_categories = sorted(
                 financial_data["category_breakdown"].items(),
                 key=lambda x: x[1],
                 reverse=True
-            )[:3]
-            category_info = ", ".join([f"{cat}: ${amt:.2f}" for cat, amt in top_categories])
-            context_parts.append(f"Top categories: {category_info}")
+            )[:5]  # Show top 5 instead of 3 for more detail
+            if top_categories and top_categories[0][1] > 0:  # Ensure we have real amounts
+                category_info = ", ".join([f"{cat}: ${amt:.2f}" for cat, amt in top_categories])
+                context_parts.append(f"Spending by category: {category_info}")
+                has_real_data = True
         
+        # Validate and build transaction details
         if "transactions" in financial_data and financial_data["transactions"]:
-            transaction_count = len(financial_data["transactions"])
-            context_parts.append(f"Recent transactions: {transaction_count} items")
+            transactions = financial_data["transactions"]
+            if len(transactions) > 0:
+                transaction_count = len(transactions)
+                context_parts.append(f"Found {transaction_count} recent transactions")
+                
+                # Add details about recent transactions for more context
+                if hasattr(transactions[0], 'amount') and hasattr(transactions[0], 'description'):
+                    recent_tx = transactions[0]
+                    context_parts.append(f"Most recent: ${recent_tx.amount:.2f} for {recent_tx.description}")
+                    has_real_data = True
         
+        # Validate and build budget information  
         if "budgets" in financial_data and financial_data["budgets"]:
-            over_budget = [b for b in financial_data["budgets"] if b.get("percentage_used", 0) > 100]
-            if over_budget:
-                context_parts.append(f"Over-budget categories: {len(over_budget)}")
+            budgets = financial_data["budgets"]
+            if budgets:
+                total_budgeted = sum(b.get("budgeted", 0) for b in budgets)
+                total_spent = sum(b.get("spent", 0) for b in budgets)
+                over_budget = [b for b in budgets if b.get("percentage", 0) > 100]
+                
+                context_parts.append(f"Total budget: ${total_budgeted:.2f}, spent: ${total_spent:.2f}")
+                if over_budget:
+                    over_budget_categories = [b.get("category", "Unknown") for b in over_budget]
+                    context_parts.append(f"Over-budget in: {', '.join(over_budget_categories)}")
+                has_real_data = True
         
-        return "; ".join(context_parts) if context_parts else "No specific financial data available"
+        # Enhanced validation - ensure we have meaningful data
+        if not has_real_data or not context_parts:
+            logger.warning("⚠️  No real financial data found - context may be empty")
+            return "No specific financial data available - please check database connection"
+        
+        context = "; ".join(context_parts)
+        logger.info(f"📊 Built financial context: {context}")
+        return context
     
     def _generate_template_response(self, query: str, financial_data: Dict[str, Any], query_type: QueryType) -> str:
         """Generate template response based on query type"""
@@ -239,38 +306,121 @@ Please provide a helpful response based on this financial information.<|im_end|>
         return template_func(financial_data)
     
     def _template_spending_summary(self, data: Dict[str, Any]) -> str:
-        """Template for spending summary responses"""
-        if "total_amount" in data:
+        """Template for spending summary responses using actual data"""
+        if "total_amount" in data and data["total_amount"] > 0:
             total = data["total_amount"]
-            if "category_breakdown" in data:
-                top_category = max(data["category_breakdown"].items(), key=lambda x: x[1])
-                return f"You've spent ${total:.2f} recently. Your highest spending category is {top_category[0]} at ${top_category[1]:.2f}."
-            return f"Your total spending is ${total:.2f}."
-        return "I can help you analyze your spending patterns. Let me look up your recent transactions."
+            response_parts = [f"You've spent ${total:.2f} in total"]
+            
+            if "category_breakdown" in data and data["category_breakdown"]:
+                categories = sorted(data["category_breakdown"].items(), key=lambda x: x[1], reverse=True)[:3]
+                if categories and categories[0][1] > 0:
+                    top_categories = ", ".join([f"{cat} (${amt:.2f})" for cat, amt in categories])
+                    response_parts.append(f"Your top spending categories are: {top_categories}")
+            
+            if "timeframe" in data and data["timeframe"]:
+                response_parts.append(f"for {data['timeframe']}")
+                
+            return ". ".join(response_parts) + "."
+        
+        # Fallback only if no real data
+        return "I'd like to help you analyze your spending, but I'm not finding transaction data. Please make sure you have recorded some expenses first."
     
     def _template_budget_status(self, data: Dict[str, Any]) -> str:
-        """Template for budget status responses"""
+        """Template for budget status responses using actual data"""
         if "budgets" in data and data["budgets"]:
-            over_budget = [b for b in data["budgets"] if b.get("percentage_used", 0) > 100]
+            budgets = data["budgets"]
+            response_parts = []
+            
+            # Calculate budget statistics
+            total_budgets = len(budgets)
+            over_budget = [b for b in budgets if b.get("percentage", 0) > 100]
+            near_limit = [b for b in budgets if 80 <= b.get("percentage", 0) <= 100]
+            
             if over_budget:
-                return f"You have {len(over_budget)} budget(s) that are over the limit. Consider reviewing your spending in these categories."
-            return "Your budgets are looking good! You're staying within your limits."
-        return "I can help you check your budget status. Let me analyze your current budget performance."
+                over_budget_names = [b.get("category", "Unknown") for b in over_budget]
+                response_parts.append(f"⚠️ You're over budget in {len(over_budget)} category(ies): {', '.join(over_budget_names)}")
+            elif near_limit:
+                near_limit_names = [b.get("category", "Unknown") for b in near_limit]
+                response_parts.append(f"You're close to your budget limit in: {', '.join(near_limit_names)}")
+            else:
+                response_parts.append(f"✅ All {total_budgets} budgets are on track")
+            
+            # Add specific budget details
+            if budgets:
+                total_budgeted = sum(b.get("budgeted", 0) for b in budgets)
+                total_spent = sum(b.get("spent", 0) for b in budgets)
+                remaining = total_budgeted - total_spent
+                response_parts.append(f"Total budgeted: ${total_budgeted:.2f}, spent: ${total_spent:.2f}, remaining: ${remaining:.2f}")
+            
+            return ". ".join(response_parts) + "."
+        
+        # Fallback only if no real data
+        return "I can help you check your budget status, but I don't see any budgets set up yet. Would you like to create some budgets first?"
     
     def _template_transaction_search(self, data: Dict[str, Any]) -> str:
-        """Template for transaction search responses"""
+        """Template for transaction search responses using actual data"""
         if "transactions" in data and data["transactions"]:
-            count = len(data["transactions"])
+            transactions = data["transactions"]
+            count = len(transactions)
             if count > 0:
-                latest = data["transactions"][0]
-                return f"I found {count} recent transactions. Your most recent was ${latest.get('amount', 0):.2f} for {latest.get('description', 'a purchase')}."
-        return "I can help you search through your transactions. What specific transactions are you looking for?"
+                response_parts = [f"I found {count} transactions"]
+                
+                # Add details about the most recent transaction
+                if hasattr(transactions[0], 'amount') and hasattr(transactions[0], 'description'):
+                    latest = transactions[0]
+                    response_parts.append(f"Most recent: ${latest.amount:.2f} for {latest.description}")
+                    
+                    # Add date if available
+                    if hasattr(latest, 'date'):
+                        response_parts.append(f"on {latest.date}")
+                
+                # Add total amount if available
+                if "total_amount" in data:
+                    total = data["total_amount"]
+                    response_parts.append(f"Total amount: ${total:.2f}")
+                
+                # Add categories if available
+                if "categories" in data and data["categories"]:
+                    unique_categories = data["categories"][:3]  # Limit to 3 for brevity
+                    response_parts.append(f"Categories: {', '.join(unique_categories)}")
+                
+                return ". ".join(response_parts) + "."
+        
+        # Fallback only if no real data
+        return "I can help you search through your transactions, but I'm not finding any transaction data. Please make sure you have recorded some expenses first."
     
     def _template_balance_inquiry(self, data: Dict[str, Any]) -> str:
-        """Template for balance inquiry responses"""
-        if "total_amount" in data:
-            return f"Based on your recent activity, you've spent ${data['total_amount']:.2f}. I can provide more detailed balance information if you specify a time period."
-        return "I can help you check your balance and spending patterns. What time period would you like to analyze?"
+        """Template for balance inquiry responses using actual data"""
+        response_parts = []
+        
+        if "total_spent" in data and data["total_spent"] > 0:
+            response_parts.append(f"You've spent ${data['total_spent']:.2f} in total")
+        
+        if "total_budgeted" in data and data["total_budgeted"] > 0:
+            total_budgeted = data["total_budgeted"]
+            response_parts.append(f"with a total budget of ${total_budgeted:.2f}")
+            
+            if "remaining_budget" in data:
+                remaining = data["remaining_budget"]
+                response_parts.append(f"You have ${remaining:.2f} remaining in your budgets")
+        
+        if "transaction_count" in data and data["transaction_count"] > 0:
+            count = data["transaction_count"]
+            response_parts.append(f"across {count} transactions")
+        
+        if "categories" in data and data["categories"]:
+            category_count = len(data["categories"])
+            response_parts.append(f"in {category_count} different categories")
+        
+        if response_parts:
+            return ". ".join(response_parts) + "."
+        
+        # Fallback with actual total if available
+        if "total_amount" in data and data["total_amount"] > 0:
+            return f"Based on your recent activity, you've spent ${data['total_amount']:.2f}. I can provide more detailed information about specific time periods or categories."
+        
+        # Final fallback only if no real data
+        return "I can help you check your balance and spending patterns, but I need some transaction data first. Please add some expenses to get started."
     
     def _template_unknown(self, data: Dict[str, Any]) -> str:
         """Template for unknown query types"""

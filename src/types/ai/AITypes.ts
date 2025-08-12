@@ -10,21 +10,15 @@ export interface AIQueryContext {
 }
 
 export interface AIResponse {
-  content: string;
-  embeddedData?: EmbeddedFinancialData;
-  suggestedActions?: string[];
   message: string;
+  content: string;
   confidence: number;
   queryType: QueryType;
+  embeddedData?: import('./EmbeddedDataTypes').EmbeddedFinancialData;
+  suggestedActions?: string[];
   financialData?: FinancialData;
   error?: string;
   suggestions?: string[];
-}
-
-export interface EmbeddedFinancialData {
-  type: 'budget_card' | 'transaction_list' | 'category_breakdown' | 'analytics';
-  data: any;
-  title?: string;
 }
 
 export interface FinancialData {
