@@ -30,38 +30,49 @@ export class BudgetCalculationService {
     try {
       await this.databaseService.initialize();
 
-      const query = `
-        SELECT 
-          b.id as budget_id,
-          b.category_id,
-          b.amount as budgeted_amount,
-          b.period_start,
-          b.period_end,
-          c.name as category_name,
-          c.color as category_color,
-          COALESCE(SUM(t.amount), 0) as spent_amount,
-          COUNT(t.id) as transaction_count
-        FROM budgets b
-        JOIN categories c ON b.category_id = c.id
-        LEFT JOIN transactions t ON t.category_id = b.category_id 
-          AND t.transaction_type = 'expense'
-          AND t.date >= b.period_start 
-          AND t.date <= b.period_end
-        WHERE (? IS NULL OR b.period_start <= ?) 
-          AND (? IS NULL OR b.period_end >= ?)
-        GROUP BY b.id, b.category_id, b.amount, b.period_start, b.period_end, 
-                 c.name, c.color
-        ORDER BY c.name ASC
-      `;
+      // Get all budgets and categories
+      const budgets = await this.databaseService.getBudgets();
+      const categories = await this.databaseService.getCategories();
+      
+      // Filter budgets by period if specified
+      const filteredBudgets = budgets.filter(budget => {
+        if (periodStart && budget.period_end < periodStart) return false;
+        if (periodEnd && budget.period_start > periodEnd) return false;
+        return true;
+      });
 
-      const params = [
-        periodStart?.toISOString().split('T')[0] || null,
-        periodEnd?.toISOString().split('T')[0] || null,
-        periodEnd?.toISOString().split('T')[0] || null,
-        periodStart?.toISOString().split('T')[0] || null
-      ];
+      // Calculate progress for each budget
+      const budgetProgressPromises = filteredBudgets.map(async (budget) => {
+        const category = categories.find(c => c.id === budget.category_id);
+        
+        // Get transactions for this category within the budget period
+        const transactions = await this.databaseService.getTransactions(
+          budget.category_id,
+          'expense',
+          budget.period_start,
+          budget.period_end
+        );
+        
+        const spent_amount = transactions.reduce((sum, t) => sum + t.amount, 0);
+        const transaction_count = transactions.length;
+        
+        return {
+          budget_id: budget.id,
+          category_id: budget.category_id,
+          budgeted_amount: budget.amount,
+          period_start: budget.period_start,
+          period_end: budget.period_end,
+          category_name: category?.name || 'Unknown Category',
+          category_color: category?.color || '#757575',
+          spent_amount,
+          transaction_count
+        };
+      });
 
-      const results = await this.databaseService['db']?.getAllAsync<any>(query, params) || [];
+      const results = await Promise.all(budgetProgressPromises);
+      
+      // Sort by category name
+      results.sort((a, b) => a.category_name.localeCompare(b.category_name));
 
       const budgetProgress = results.map(row => this.mapToBudgetProgress(row));
       
@@ -87,40 +98,59 @@ export class BudgetCalculationService {
     try {
       await this.databaseService.initialize();
 
-      const query = `
-        SELECT 
-          c.id as category_id,
-          c.name as category_name,
-          c.color as category_color,
-          SUM(t.amount) as spent_amount,
-          COUNT(t.id) as transaction_count
-        FROM categories c
-        JOIN transactions t ON t.category_id = c.id
-        LEFT JOIN budgets b ON b.category_id = c.id 
-          AND t.date >= b.period_start 
-          AND t.date <= b.period_end
-        WHERE b.id IS NULL
-          AND t.date >= ? AND t.date <= ?
-          AND t.transaction_type = 'expense'
-        GROUP BY c.id, c.name, c.color
-        HAVING spent_amount > 0
-        ORDER BY spent_amount DESC
-      `;
+      // Get all categories, budgets, and transactions
+      const categories = await this.databaseService.getCategories();
+      const budgets = await this.databaseService.getBudgets();
+      const transactions = await this.databaseService.getTransactions(
+        undefined, // all categories
+        'expense',  // only expense transactions
+        periodStart,
+        periodEnd
+      );
 
-      const params = [
-        periodStart.toISOString().split('T')[0],
-        periodEnd.toISOString().split('T')[0]
-      ];
+      // Group transactions by category
+      const transactionsByCategory = transactions.reduce((acc, transaction) => {
+        if (!acc[transaction.category_id]) {
+          acc[transaction.category_id] = [];
+        }
+        acc[transaction.category_id].push(transaction);
+        return acc;
+      }, {} as Record<number, typeof transactions>);
 
-      const results = await this.databaseService['db']?.getAllAsync<any>(query, params) || [];
+      // Find categories with spending that don't have budgets in this period
+      const unbudgetedSpending: UnbudgetedSpending[] = [];
 
-      const unbudgetedSpending = results.map(row => ({
-        category_id: row.category_id,
-        category_name: row.category_name || 'Unknown Category',
-        category_color: row.category_color || '#757575',
-        spent_amount: row.spent_amount || 0,
-        transaction_count: row.transaction_count || 0
-      }));
+      for (const categoryId of Object.keys(transactionsByCategory)) {
+        const categoryTransactions = transactionsByCategory[Number(categoryId)];
+        const category = categories.find(c => c.id === Number(categoryId));
+        
+        if (!category || !categoryTransactions.length) continue;
+
+        // Check if this category has a budget that covers this period
+        const hasBudget = budgets.some(budget => 
+          budget.category_id === Number(categoryId) &&
+          budget.period_start <= periodEnd &&
+          budget.period_end >= periodStart
+        );
+
+        if (!hasBudget) {
+          const spent_amount = categoryTransactions.reduce((sum, t) => sum + t.amount, 0);
+          const transaction_count = categoryTransactions.length;
+
+          if (spent_amount > 0) {
+            unbudgetedSpending.push({
+              category_id: Number(categoryId),
+              category_name: category.name,
+              category_color: category.color,
+              spent_amount,
+              transaction_count
+            });
+          }
+        }
+      }
+
+      // Sort by spent amount descending
+      unbudgetedSpending.sort((a, b) => b.spent_amount - a.spent_amount);
 
       this.setCachedResult(cacheKey, unbudgetedSpending);
       return unbudgetedSpending;

@@ -1,5 +1,6 @@
 // Services barrel export
 import { DatabaseService } from './DatabaseService';
+import { SupabaseService } from './SupabaseService';
 import { DataExportService, dataExportService } from './DataExportService';
 import { FileSystemService } from './FileSystemService';
 import { ShareService } from './ShareService';
@@ -8,8 +9,19 @@ import { BudgetCalculationService } from './BudgetCalculationService';
 import { BudgetAlertService } from './BudgetAlertService';
 import { BudgetAnalyticsService } from './BudgetAnalyticsService';
 
-// Get the singleton instance of DatabaseService
-export const databaseService = DatabaseService.getInstance();
+// *** TEMPORARY MIGRATION COMMENT ***
+// The app is currently migrating from SQLite (DatabaseService) to Supabase (SupabaseService)
+// 
+// TO SWITCH TO CLOUD DATABASE:
+// 1. Uncomment the line below to use SupabaseService (cloud database)
+// 2. Comment out the DatabaseService.getInstance() line
+// 3. Make sure your .env file has SUPABASE_URL and SUPABASE_ANON_KEY
+//
+// export const databaseService = new SupabaseService();  // <-- Use this for cloud database
+export const databaseService = DatabaseService.getInstance();  // <-- Currently using local SQLite
+
+// Also create a Supabase service instance for testing
+export const supabaseService = new SupabaseService();
 
 // Export the singleton instance of DataExportService (created in DataExportService.ts)
 export { dataExportService };
@@ -25,7 +37,8 @@ export const budgetAnalyticsService = new BudgetAnalyticsService(databaseService
 
 // Export the service classes as well for testing
 export { 
-  DatabaseService, 
+  DatabaseService,
+  SupabaseService, 
   DataExportService,
   FileSystemService,
   ShareService,

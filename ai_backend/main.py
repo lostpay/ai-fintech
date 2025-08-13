@@ -21,8 +21,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add AI PoC modules to Python path
-ai_poc_path = Path(__file__).parent.parent / "ai_poc"
+# Add AI PoC modules to Python path using absolute path
+ai_poc_path = Path("C:/Users/USER/Downloads/apps/APP_3/app/ai_poc")
 sys.path.insert(0, str(ai_poc_path))
 
 # Verify the path exists
@@ -31,20 +31,21 @@ if not ai_poc_path.exists():
 
 logger.info(f"Added AI PoC path to sys.path: {ai_poc_path}")
 
-# Import backend modules using relative imports
+# Add current directory to Python path for imports
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
+# Import backend modules
 try:
     from api.routes import ai_routes, health_routes, database_routes
     from api.models import APIHealthResponse
     from services.ai_service_wrapper import AIServiceWrapper
+    logger.info("Successfully imported backend modules")
 except ImportError as e:
     logger.error(f"Failed to import backend modules: {e}")
-    # Try absolute imports with current directory in path
-    current_dir = Path(__file__).parent
-    sys.path.insert(0, str(current_dir))
-    
-    from api.routes import ai_routes, health_routes, database_routes
-    from api.models import APIHealthResponse  
-    from services.ai_service_wrapper import AIServiceWrapper
+    logger.error(f"Current directory: {current_dir}")
+    logger.error(f"Python path: {sys.path}")
+    raise
 
 # Global AI service instance
 ai_service: AIServiceWrapper = None

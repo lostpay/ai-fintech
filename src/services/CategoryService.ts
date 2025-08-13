@@ -160,70 +160,87 @@ export class CategoryService {
    * Get category usage statistics
    */
   async getCategoryUsageStats(categoryId?: number): Promise<CategoryUsageStats[]> {
-    const db = (this.databaseService as any).db;
-    if (!db) throw new Error('Database not connected');
-    
-    const whereClause = categoryId ? 'WHERE c.id = ?' : '';
-    const params = categoryId ? [categoryId] : [];
-    
-    const results = await db.getAllAsync(`
-      SELECT 
-        c.id as category_id,
-        c.name as category_name,
-        COUNT(t.id) as transaction_count,
-        COALESCE(SUM(CASE WHEN t.transaction_type = 'expense' THEN t.amount ELSE 0 END), 0) as total_amount,
-        COALESCE(AVG(CASE WHEN t.transaction_type = 'expense' THEN t.amount ELSE NULL END), 0) as average_amount,
-        MAX(t.date) as last_used
-      FROM categories c
-      LEFT JOIN transactions t ON t.category_id = c.id
-      ${whereClause}
-      GROUP BY c.id, c.name
-      ORDER BY transaction_count DESC, c.name
-    `, params);
-    
-    // Get monthly usage for each category
-    const statsWithMonthly = await Promise.all(
-      results.map(async (stat: any) => {
-        const monthlyUsage = await this.getMonthlyUsageStats(stat.category_id);
-        return {
-          category_id: stat.category_id,
-          category_name: stat.category_name,
-          transaction_count: stat.transaction_count,
-          total_amount: stat.total_amount || 0,
-          average_amount: stat.average_amount || 0,
-          last_used: stat.last_used ? new Date(stat.last_used) : null,
-          monthly_usage: monthlyUsage,
-        } as CategoryUsageStats;
-      })
-    );
-    
-    return statsWithMonthly;
+    try {
+      // Get all categories
+      const categories = categoryId ? 
+        [await this.databaseService.getCategoryById(categoryId)].filter(Boolean) :
+        await this.databaseService.getCategories();
+      
+      // Calculate stats for each category
+      const statsWithMonthly = await Promise.all(
+        categories.map(async (category: any) => {
+          const transactions = await this.databaseService.getTransactions(
+            category.id,
+            'expense'
+          );
+          
+          const monthlyUsage = await this.getMonthlyUsageStats(category.id);
+          
+          const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0);
+          const averageAmount = transactions.length > 0 ? totalAmount / transactions.length : 0;
+          const lastUsed = transactions.length > 0 ? 
+            new Date(Math.max(...transactions.map(t => t.date.getTime()))) : null;
+          
+          return {
+            category_id: category.id,
+            category_name: category.name,
+            transaction_count: transactions.length,
+            total_amount: totalAmount,
+            average_amount: averageAmount,
+            last_used: lastUsed,
+            monthly_usage: monthlyUsage,
+          } as CategoryUsageStats;
+        })
+      );
+      
+      // Sort by transaction count descending, then by name
+      return statsWithMonthly.sort((a, b) => {
+        if (b.transaction_count !== a.transaction_count) {
+          return b.transaction_count - a.transaction_count;
+        }
+        return a.category_name.localeCompare(b.category_name);
+      });
+    } catch (error) {
+      console.error('Error getting category usage stats:', error);
+      throw error;
+    }
   }
 
   /**
    * Get monthly usage statistics for a category
    */
   private async getMonthlyUsageStats(categoryId: number): Promise<{ month: string; count: number; amount: number }[]> {
-    const db = (this.databaseService as any).db;
-    if (!db) throw new Error('Database not connected');
-    
-    const results = await db.getAllAsync(`
-      SELECT 
-        strftime('%Y-%m', date) as month,
-        COUNT(*) as count,
-        SUM(amount) as amount
-      FROM transactions 
-      WHERE category_id = ? AND transaction_type = 'expense'
-        AND date >= date('now', '-12 months')
-      GROUP BY strftime('%Y-%m', date)
-      ORDER BY month DESC
-    `, [categoryId]);
-    
-    return results.map((row: any) => ({
-      month: row.month,
-      count: row.count,
-      amount: row.amount || 0,
-    }));
+    try {
+      // Get transactions for the last 12 months
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      
+      const transactions = await this.databaseService.getTransactions(
+        categoryId,
+        'expense',
+        twelveMonthsAgo
+      );
+      
+      // Group transactions by month
+      const monthlyStats = transactions.reduce((acc, transaction) => {
+        const month = transaction.date.toISOString().substring(0, 7); // YYYY-MM format
+        
+        if (!acc[month]) {
+          acc[month] = { month, count: 0, amount: 0 };
+        }
+        
+        acc[month].count += 1;
+        acc[month].amount += transaction.amount;
+        
+        return acc;
+      }, {} as Record<string, { month: string; count: number; amount: number }>);
+      
+      // Convert to array and sort by month descending
+      return Object.values(monthlyStats).sort((a, b) => b.month.localeCompare(a.month));
+    } catch (error) {
+      console.error('Error getting monthly usage stats:', error);
+      return [];
+    }
   }
 
   /**
@@ -311,34 +328,42 @@ export class CategoryService {
    * Execute database update query
    */
   private async executeUpdateQuery(id: number, updates: any): Promise<void> {
-    const db = (this.databaseService as any).db;
-    if (!db) throw new Error('Database not connected');
-    
-    const updateFields = [];
-    const updateValues = [];
-    
-    for (const [key, value] of Object.entries(updates)) {
-      updateFields.push(`${key} = ?`);
-      updateValues.push(value);
+    try {
+      // Use SupabaseService to update category
+      const supabaseService = (this.databaseService as any).supabaseService;
+      if (!supabaseService) {
+        throw new Error('Supabase service not available');
+      }
+      
+      const success = await supabaseService.updateCategory(id, updates);
+      if (!success) {
+        throw new Error('Failed to update category');
+      }
+    } catch (error) {
+      console.error('Error executing update query:', error);
+      throw error;
     }
-    
-    updateValues.push(id);
-    
-    await db.runAsync(`
-      UPDATE categories 
-      SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, updateValues);
   }
 
   /**
    * Execute database delete query
    */
   private async executeDeleteQuery(id: number): Promise<void> {
-    const db = (this.databaseService as any).db;
-    if (!db) throw new Error('Database not connected');
-    
-    await db.runAsync('DELETE FROM categories WHERE id = ?', [id]);
+    try {
+      // Use SupabaseService to delete category
+      const supabaseService = (this.databaseService as any).supabaseService;
+      if (!supabaseService) {
+        throw new Error('Supabase service not available');
+      }
+      
+      const success = await supabaseService.deleteCategory(id);
+      if (!success) {
+        throw new Error('Failed to delete category');
+      }
+    } catch (error) {
+      console.error('Error executing delete query:', error);
+      throw error;
+    }
   }
 }
 

@@ -1,0 +1,12 @@
+{
+  "backend_sync": {
+    "enabled": false,
+    "base_url": "http://192.168.1.12:8000/api",
+    "timeout": 10000,
+    "description": "Configuration for backend synchronization. Set enabled to true to sync mobile transactions to the backend database."
+  },
+  "instructions": {
+    "enable_sync": "To enable backend sync: 1) Start your backend server, 2) Update base_url if needed, 3) Set enabled to true",
+    "test_connection": "Use the BackendSyncService.testConnection() method to verify connectivity"
+  }
+}

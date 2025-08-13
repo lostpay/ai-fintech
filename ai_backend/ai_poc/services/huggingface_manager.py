@@ -6,7 +6,7 @@ import os
 import logging
 from typing import Dict, List, Optional, Any
 from huggingface_hub import InferenceClient
-from models.data_types import QueryType, ProcessingType
+from ..models.data_types import QueryType, ProcessingType
 import requests
 import time
 

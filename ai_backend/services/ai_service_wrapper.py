@@ -9,33 +9,24 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 import json
 
-# Add AI PoC modules to Python path
-current_dir = Path(__file__).parent.parent  # ai_backend directory
-ai_poc_path = current_dir.parent / "ai_poc"  # ../ai_poc
-
-if not ai_poc_path.exists():
-    # Try alternative paths
-    possible_paths = [
-        current_dir / "ai_poc",  # ai_backend/ai_poc
-        current_dir.parent / "ai_poc",  # app/ai_poc
-        Path(__file__).parent.parent.parent / "ai_poc",  # up one more level
-    ]
-    for path in possible_paths:
-        if path.exists():
-            ai_poc_path = path
-            break
-
-sys.path.insert(0, str(ai_poc_path))
-sys.path.insert(0, str(current_dir))  # Add backend path
-
 logger = logging.getLogger(__name__)
 
-# Verify paths exist
-if not ai_poc_path.exists():
-    logger.error(f"AI PoC directory not found at: {ai_poc_path}")
-else:
+# Add AI PoC modules to Python path using absolute paths
+current_file_path = Path(__file__).resolve()
+project_root = current_file_path.parent.parent.parent
+ai_poc_path = project_root / "ai_poc"
+backend_path = project_root / "ai_backend"
+
+# Add both paths to sys.path if they exist
+if ai_poc_path.exists():
+    sys.path.insert(0, str(ai_poc_path))
     logger.info(f"AI PoC path: {ai_poc_path}")
-    logger.info(f"Backend path: {current_dir}")
+else:
+    logger.error(f"AI PoC directory not found at: {ai_poc_path}")
+
+if backend_path.exists():
+    sys.path.insert(0, str(backend_path))
+    logger.info(f"Backend path: {backend_path}")
 
 try:
     # Import AI PoC components
@@ -43,7 +34,19 @@ try:
     from models.data_types import QueryType as AIQueryType, ProcessingType as AIProcessingType
 except ImportError as e:
     logger.error(f"Failed to import AI PoC modules from {ai_poc_path}: {e}")
-    raise ImportError(f"Cannot find AI PoC modules. Please ensure {ai_poc_path} exists and contains the required files.")
+    # Try alternative import approach
+    try:
+        # Add the parent directory and try importing with full module paths
+        sys.path.insert(0, str(project_root))
+        from ai_poc.services.ai_service import AIService
+        from ai_poc.models.data_types import QueryType as AIQueryType, ProcessingType as AIProcessingType
+        logger.info("Successfully imported AI PoC modules using full module paths")
+    except ImportError as e2:
+        logger.error(f"Alternative import also failed: {e2}")
+        raise ImportError(f"Cannot find AI PoC modules. Please ensure {ai_poc_path} exists and contains the required files.")
+
+# Import the new Supabase service
+from .supabase_service import SupabaseService
 
 # Import API models
 from ..api.models import (
@@ -51,20 +54,27 @@ from ..api.models import (
     QueryType, ProcessingType, ComponentType
 )
 
-logger = logging.getLogger(__name__)
-
 class AIServiceWrapper:
     """
     Wrapper class that adapts the AI PoC service for FastAPI use
     """
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, user_id: str = "default-user"):
         """Initialize the AI service wrapper"""
         try:
+            # Initialize Supabase service
+            self.database = SupabaseService(user_id)
+            
+            # Initialize AI service with Supabase database
             self.ai_service = AIService(api_key)
+            
+            # Replace the SQLite database with Supabase
+            self.ai_service.database = self.database
+            
             self.session_contexts = {}  # Store session contexts
             self.api_key = api_key
-            logger.info("AI Service Wrapper initialized successfully")
+            self.user_id = user_id
+            logger.info("AI Service Wrapper initialized successfully with Supabase")
         except Exception as e:
             logger.error(f"Failed to initialize AI Service: {e}")
             raise
@@ -231,14 +241,12 @@ class AIServiceWrapper:
             logger.error(f"Error getting suggestions: {e}")
             return []
     
-    # Database access methods
+    # Database access methods using Supabase
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
         try:
-            db_service = self.ai_service.database
-            
-            transactions = db_service.get_transactions_with_categories()
-            budgets = db_service.get_budgets_with_details()
+            transactions = self.database.get_transactions_with_categories()
+            budgets = self.database.get_budgets_with_details()
             categories = set(t.category_name for t in transactions)
             
             date_range = {
@@ -251,7 +259,7 @@ class AIServiceWrapper:
                 "total_categories": len(categories),
                 "total_budgets": len(budgets),
                 "date_range": date_range,
-                "last_transaction_date": max(t.date for t in transactions) if transactions else None
+                "last_transaction_date": max(t.date for t in transactions).isoformat() if transactions else None
             }
             
         except Exception as e:
@@ -273,22 +281,22 @@ class AIServiceWrapper:
     ) -> List[Dict[str, Any]]:
         """Get transactions with filtering"""
         try:
-            db_service = self.ai_service.database
-            transactions = db_service.get_transactions_with_categories(limit=limit + offset)
+            transactions = self.database.get_transactions_with_categories(limit=limit + offset)
             
             # Apply offset
             transactions = transactions[offset:]
             
-            # Convert to dict format
+            # Convert to dict format (amounts are already in cents from Supabase)
             result = []
             for t in transactions:
                 result.append({
                     "id": t.id,
-                    "amount": float(t.amount),
+                    "amount": float(t.amount) / 100.0,  # Convert cents to dollars
                     "description": t.description,
                     "category_name": t.category_name,
+                    "transaction_type": t.transaction_type,
                     "date": t.date.isoformat(),
-                    "created_at": t.created_at.isoformat() if hasattr(t, 'created_at') else None
+                    "created_at": t.created_at.isoformat()
                 })
             
             return result[:limit]
@@ -300,15 +308,14 @@ class AIServiceWrapper:
     def get_budgets(self) -> List[Dict[str, Any]]:
         """Get budget information"""
         try:
-            db_service = self.ai_service.database
-            budgets = db_service.get_budgets_with_details()
+            budgets = self.database.get_budgets_with_details()
             
             result = []
             for b in budgets:
                 result.append({
-                    "id": getattr(b, 'id', None),
+                    "id": b.id,
                     "category_name": b.category_name,
-                    "amount": float(b.amount),
+                    "amount": float(b.amount) / 100.0,  # Convert cents to dollars
                     "spent_amount": float(b.spent_amount),
                     "remaining_amount": float(b.remaining_amount),
                     "percentage_used": float(b.percentage_used)
@@ -323,8 +330,7 @@ class AIServiceWrapper:
     def get_categories(self) -> List[Dict[str, Any]]:
         """Get categories with spending information"""
         try:
-            db_service = self.ai_service.database
-            summary = db_service.get_spending_summary()
+            summary = self.database.get_spending_summary()
             
             result = []
             for category, amount in summary["category_breakdown"].items():
@@ -348,14 +354,13 @@ class AIServiceWrapper:
     ) -> Dict[str, Any]:
         """Get spending summary with optional filters"""
         try:
-            db_service = self.ai_service.database
-            summary = db_service.get_spending_summary()
+            summary = self.database.get_spending_summary(start_date, end_date)
             
             return {
                 "total_amount": float(summary["total_amount"]),
                 "transaction_count": summary["transaction_count"],
                 "category_breakdown": {k: float(v) for k, v in summary["category_breakdown"].items()},
-                "timeframe": "all_time"  # Could be enhanced with actual date filtering
+                "timeframe": "all_time" if not start_date and not end_date else "filtered"
             }
             
         except Exception as e:
@@ -392,7 +397,11 @@ class AIServiceWrapper:
         """Get or create session context"""
         if session_id not in self.session_contexts:
             # Create new session context using AI PoC types
-            from models.data_types import AIQueryContext
+            try:
+                from models.data_types import AIQueryContext
+            except ImportError:
+                from ai_poc.models.data_types import AIQueryContext
+            
             self.session_contexts[session_id] = AIQueryContext(
                 session_id=session_id,
                 timestamp=datetime.now(),
@@ -472,7 +481,7 @@ class AIServiceWrapper:
     def get_database_health(self) -> Dict[str, Any]:
         """Get database health status"""
         try:
-            return self.ai_service.get_database_health()
+            return self.database.get_database_health()
         except Exception as e:
             logger.error(f"Error getting database health: {e}")
             return {

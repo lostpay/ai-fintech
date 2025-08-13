@@ -6,7 +6,7 @@ import re
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
-from models.data_types import QueryType, FinancialData
+from ..models.data_types import QueryType, FinancialData
 
 logger = logging.getLogger(__name__)
 
