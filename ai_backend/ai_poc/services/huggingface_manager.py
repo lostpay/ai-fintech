@@ -19,69 +19,164 @@ class HuggingFaceManager:
         self.api_key = api_key
         self.client = InferenceClient(token=api_key)
         
-        # Model configuration
+        # Model configuration - following AI_Finance_Chat_Workflow.md specifications
         self.models = {
-            "classification": os.getenv("HF_CLASSIFICATION_MODEL", "facebook/bart-large-mnli"),
-            "conversational": os.getenv("HF_CONVERSATIONAL_MODEL", "openai/gpt-oss-20b"),
-            "financial": os.getenv("HF_FINANCIAL_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest"),
-            "general": os.getenv("HF_GENERAL_MODEL", "openai/gpt-oss-20b")
+            "classification": os.getenv("HF_CLASSIFICATION_MODEL", "mistralai/Mistral-7B-Instruct-v0.3"),
+            "conversational": os.getenv("HF_CONVERSATIONAL_MODEL", "mistralai/Mistral-7B-Instruct-v0.3"),
+            "financial": os.getenv("HF_FINANCIAL_MODEL", "ProsusAI/finbert"),
+            "general": os.getenv("HF_GENERAL_MODEL", "meta-llama/Meta-Llama-3-8B-Instruct"),
+            "ner": os.getenv("HF_NER_MODEL", "dslim/bert-base-NER"),
+            "embeddings": os.getenv("HF_EMBEDDINGS_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
         }
         
         logger.info(f"Initialized HuggingFace Manager with models: {self.models}")
     
-    def classify_query(self, query: str) -> tuple[QueryType, float]:
-        """Classify the type of financial query"""
+    def classify_query_json(self, query: str) -> dict:
+        """Classify query using exact JSON schema from workflow"""
         try:
-            # Define possible query types for zero-shot classification
-            candidate_labels = [
-                "spending summary",
-                "budget status", 
-                "balance inquiry",
-                "transaction search",
-                "general question"
-            ]
-            
-            result = self.client.zero_shot_classification(
-                query,
-                candidate_labels,
-                model=self.models["classification"]
-            )
-            
-            # Map results to QueryType
-            label_mapping = {
-                "spending summary": QueryType.SPENDING_SUMMARY,
-                "budget status": QueryType.BUDGET_STATUS,
-                "balance inquiry": QueryType.BALANCE_INQUIRY, 
-                "transaction search": QueryType.TRANSACTION_SEARCH,
-                "general question": QueryType.UNKNOWN
-            }
-            
-            # Handle different response formats from HuggingFace
-            if isinstance(result, dict) and "labels" in result and "scores" in result:
-                top_label = result["labels"][0]
-                confidence = result["scores"][0]
-            elif isinstance(result, list) and len(result) > 0:
-                # Sometimes HuggingFace returns a list format
-                top_result = result[0]
-                if isinstance(top_result, dict):
-                    top_label = top_result.get("label", "general question")
-                    confidence = top_result.get("score", 0.5)
-                else:
-                    top_label = "general question"
-                    confidence = 0.5
-            else:
-                # Fallback for unexpected format
-                top_label = "general question"
-                confidence = 0.5
+            # Use the exact prompt from the workflow
+            classification_prompt = f"""You are an intent classifier. Return JSON only.
+User: "{query}"
+
+JSON schema:
+{{
+  "intent": "spending_summary | budget_status | transaction_search | balance_inquiry | general",
+  "time_range": {{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "granularity": "day|week|month"}},
+  "filters": {{"merchant": string|null, "category": string|null, "amount_min": number|null, "amount_max": number|null}}
+}}"""
+
+            # Try with Mistral-7B for JSON classification (as specified in workflow)
+            try:
+                # Use chat_completion for classification
+                messages = [{"role": "user", "content": classification_prompt}]
+                response = self.client.chat_completion(
+                    messages=messages,
+                    model=self.models["classification"],
+                    max_tokens=150,
+                    temperature=0.1  # Low temp for factual classification
+                )
                 
-            query_type = label_mapping.get(top_label, QueryType.UNKNOWN)
+                if response and response.choices and len(response.choices) > 0:
+                    # Try to parse JSON response
+                    import json
+                    import re
+                    
+                    # Extract content from chat completion response
+                    content = response.choices[0].message.content
+                    
+                    # Extract JSON from response
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(0)
+                        result = json.loads(json_str)
+                        
+                        # Validate and normalize the result
+                        intent = result.get("intent", "general")
+                        if intent not in ["spending_summary", "budget_status", "transaction_search", "balance_inquiry", "general"]:
+                            intent = "general"
+                        
+                        logger.info(f"Query classified as {intent} with JSON structure")
+                        return {
+                            "intent": intent,
+                            "time_range": result.get("time_range", {}),
+                            "filters": result.get("filters", {}),
+                            "confidence": 0.8
+                        }
+                        
+            except Exception as json_error:
+                logger.warning(f"JSON classification failed: {json_error}")
             
-            logger.info(f"Query classified as {query_type.value} with confidence {confidence:.2f}")
-            return query_type, confidence
+            # Fallback to keyword-based classification
+            return self._classify_by_keywords_json(query)
             
         except Exception as e:
             logger.error(f"Classification failed: {e}")
-            return QueryType.UNKNOWN, 0.5
+            return {
+                "intent": "general",
+                "time_range": {},
+                "filters": {},
+                "confidence": 0.5
+            }
+    
+    def classify_query(self, query: str) -> tuple[QueryType, float]:
+        """Legacy method - calls new JSON classifier and converts format"""
+        json_result = self.classify_query_json(query)
+        
+        # Map intent to QueryType
+        intent_mapping = {
+            "spending_summary": QueryType.SPENDING_SUMMARY,
+            "budget_status": QueryType.BUDGET_STATUS,
+            "balance_inquiry": QueryType.BALANCE_INQUIRY,
+            "transaction_search": QueryType.TRANSACTION_SEARCH,
+            "general": QueryType.UNKNOWN
+        }
+        
+        query_type = intent_mapping.get(json_result["intent"], QueryType.UNKNOWN)
+        confidence = json_result.get("confidence", 0.5)
+        
+        logger.info(f"Query classified as {query_type.value} with confidence {confidence:.2f}")
+        return query_type, confidence
+    
+    def _classify_by_keywords_json(self, query: str) -> dict:
+        """Keyword-based classification returning JSON schema format"""
+        query_lower = query.lower()
+        
+        # Extract time references
+        time_range = {}
+        if "this month" in query_lower:
+            from datetime import datetime
+            now = datetime.now()
+            time_range = {
+                "from": f"{now.year}-{now.month:02d}-01",
+                "to": f"{now.year}-{now.month:02d}-{now.day:02d}",
+                "granularity": "month"
+            }
+        elif "last month" in query_lower:
+            from datetime import datetime
+            now = datetime.now()
+            prev_month = now.month - 1 if now.month > 1 else 12
+            prev_year = now.year if now.month > 1 else now.year - 1
+            time_range = {
+                "from": f"{prev_year}-{prev_month:02d}-01",
+                "to": f"{prev_year}-{prev_month:02d}-31",
+                "granularity": "month"
+            }
+        
+        # Extract filters
+        filters = {}
+        
+        # Check for category mentions
+        categories = ["groceries", "dining", "coffee", "gas", "shopping", "entertainment", "utilities", "rent"]
+        for category in categories:
+            if category in query_lower:
+                filters["category"] = category
+                break
+        
+        # Check for merchant mentions  
+        merchants = ["starbucks", "walmart", "amazon", "target", "costco"]
+        for merchant in merchants:
+            if merchant in query_lower:
+                filters["merchant"] = merchant
+                break
+        
+        # Classify intent by keywords
+        if any(keyword in query_lower for keyword in ['transaction', 'spending', 'spent', 'latest', 'recent', 'last', 'show', 'purchased']):
+            intent = "transaction_search"
+        elif any(keyword in query_lower for keyword in ['budget', 'budgets', 'budgeting', 'allocated', 'limit', 'allowance']):
+            intent = "budget_status"
+        elif any(keyword in query_lower for keyword in ['balance', 'total', 'sum', 'amount', 'money', 'have']):
+            intent = "balance_inquiry"
+        elif any(keyword in query_lower for keyword in ['summary', 'breakdown', 'categories', 'analysis', 'overview']):
+            intent = "spending_summary"
+        else:
+            intent = "general"
+        
+        return {
+            "intent": intent,
+            "time_range": time_range,
+            "filters": filters,
+            "confidence": 0.7
+        }
     
     def generate_financial_response(self, 
                                   query: str, 
@@ -97,17 +192,17 @@ class HuggingFaceManager:
             context = self._build_financial_context(financial_data, query_type)
             logger.info(f"📊 Generated context: {context}")
             
-            # Try OpenAI GPT OSS model with chat completion first
+            # Try Mistral-7B model first (as specified in workflow)
             try:
-                logger.info("🤖 Attempting GPT OSS model...")
-                response = self._generate_with_gpt_oss(query, context, query_type)
+                logger.info("🤖 Attempting Mistral-7B model...")
+                response = self._generate_with_mistral(query, context, query_type)
                 if response:
-                    logger.info(f"✅ GPT OSS success: {response[:100]}...")
+                    logger.info(f"✅ Mistral-7B success: {response[:100]}...")
                     return response
                 else:
-                    logger.warning("⚠️ GPT OSS returned empty response")
-            except Exception as gpt_error:
-                logger.warning(f"❌ GPT OSS model failed: {gpt_error}")
+                    logger.warning("⚠️ Mistral-7B returned empty response")
+            except Exception as mistral_error:
+                logger.warning(f"❌ Mistral-7B model failed: {mistral_error}")
             
             # Fallback to traditional text generation
             prompt = f"""You are a financial assistant. CRITICAL: You MUST use the specific financial data provided below in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses.
@@ -118,40 +213,20 @@ User's Financial Data: {context}
 
 Response (use the specific financial data above - include actual numbers and amounts):"""
 
-            # Try conversational model
+            # Try conversational model (Mistral-7B)
             try:
-                logger.info("🤖 Attempting conversational model...")
-                # Check if it's a GPT OSS model that needs chat completion
-                if "openai/gpt-oss-20b" in self.models["conversational"]:
-                    messages = [
-                        {"role": "system", "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided."},
-                        {"role": "user", "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response."}
-                    ]
-                    
-                    response = self.client.chat.completions.create(
-                        model=self.models["conversational"],
-                        messages=messages,
-                        max_tokens=200,
-                        temperature=0.7,
-                        stream=False
-                    )
-                    
-                    if response and hasattr(response, 'choices') and response.choices:
-                        result = response.choices[0].message.content
-                    else:
-                        result = None
-                else:
-                    result = self.client.text_generation(
-                        prompt=prompt,
-                        model=self.models["conversational"],
-                        max_new_tokens=200,
-                        temperature=0.7,
-                        do_sample=True,
-                        return_full_text=False
-                    )
+                logger.info("🤖 Attempting Mistral-7B conversational model...")
+                # Use chat_completion for conversational task
+                messages = [{"role": "user", "content": prompt}]
+                result = self.client.chat_completion(
+                    messages=messages,
+                    model=self.models["conversational"],
+                    max_tokens=200,
+                    temperature=0.7
+                )
                 
-                response = result.strip() if result else ""
-                if response:
+                if result and result.choices and len(result.choices) > 0:
+                    response = result.choices[0].message.content.strip()
                     logger.info(f"✅ Conversational model success: {response[:100]}...")
                     return response
                 else:
@@ -160,39 +235,23 @@ Response (use the specific financial data above - include actual numbers and amo
             except Exception as conv_error:
                 logger.warning(f"❌ Conversational model failed: {conv_error}")
             
-            # Fallback to general model
+            # Fallback to general model (Meta-Llama-3-8B)
             try:
-                logger.info("🤖 Attempting general model...")
-                # Check if it's a GPT OSS model that needs chat completion
-                if "openai/gpt-oss-20b" in self.models["general"]:
-                    messages = [
-                        {"role": "system", "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided."},
-                        {"role": "user", "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response."}
-                    ]
-                    
-                    response = self.client.chat.completions.create(
-                        model=self.models["general"],
-                        messages=messages,
-                        max_tokens=150,
-                        temperature=0.6,
-                        stream=False
-                    )
-                    
-                    if response and hasattr(response, 'choices') and response.choices:
-                        result = response.choices[0].message.content
-                    else:
-                        result = None
-                else:
-                    result = self.client.text_generation(
-                        prompt=prompt,
-                        model=self.models["general"],
-                        max_new_tokens=150,
-                        temperature=0.6,
-                        return_full_text=False
-                    )
+                logger.info("🤖 Attempting Meta-Llama-3-8B general model...")
+                # Use chat_completion for general model
+                messages = [
+                    {"role": "system", "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided. Always include actual dollar amounts, category names, and numbers from the user's data. Never give generic responses."},
+                    {"role": "user", "content": prompt}
+                ]
+                result = self.client.chat_completion(
+                    messages=messages,
+                    model=self.models["general"],
+                    max_tokens=150,
+                    temperature=0.6
+                )
                 
-                response = result.strip() if result else ""
-                if response:
+                if result and result.choices and len(result.choices) > 0:
+                    response = result.choices[0].message.content.strip()
                     logger.info(f"✅ General model success: {response[:100]}...")
                     return response
                 else:
@@ -290,59 +349,36 @@ Provide a clear analysis using the exact financial data above. Include specific 
             {"role": "user", "content": user_prompt}
         ]
     
-    def _generate_with_gpt_oss(self, query: str, context: str, query_type: QueryType = None) -> str:
-        """Generate response using OpenAI GPT OSS 20B model with optimized prompts per query type"""
+    def _generate_with_mistral(self, query: str, context: str, query_type: QueryType = None) -> str:
+        """Generate response using Mistral-7B model with optimized prompts per query type"""
         try:
             # Get query-type specific prompt
             messages = self._get_optimized_prompt(query, context, query_type)
             
-            # Use chat completion API for GPT OSS model
-            response = self.client.chat.completions.create(
-                model="openai/gpt-oss-20b",
+            # Combine system and user prompts for Mistral format
+            system_content = messages[0]["content"]
+            user_content = messages[1]["content"]
+            
+            combined_prompt = f"<s>[INST] {system_content}\n\n{user_content} [/INST]"
+            
+            # Use chat_completion for Mistral model
+            messages = [{"role": "user", "content": combined_prompt}]
+            response = self.client.chat_completion(
                 messages=messages,
+                model=self.models["conversational"],
                 max_tokens=200,
-                temperature=0.7,
-                stream=False
+                temperature=0.7
             )
             
-            if response and hasattr(response, 'choices') and response.choices:
-                content = response.choices[0].message.content
-                if content:
-                    logger.info("✅ GPT OSS model generated response successfully")
-                    return content.strip()
+            if response and response.choices and len(response.choices) > 0:
+                content = response.choices[0].message.content.strip()
+                logger.info("✅ Mistral-7B model generated response successfully")
+                return content
             
             return ""
             
         except Exception as e:
-            logger.error(f"GPT OSS chat completion failed: {e}")
-            # Try fallback text generation method
-            try:
-                prompt = f"""<|im_start|>system
-You are a financial assistant. CRITICAL: You MUST use the specific financial data provided. Always include actual dollar amounts, category names, and numbers from the user's data. Never give generic responses.<|im_end|>
-<|im_start|>user
-Question: {query}
-
-My Financial Data: {context}
-
-IMPORTANT: Use the specific numbers and details from my financial data above in your response.<|im_end|>
-<|im_start|>assistant"""
-                
-                result = self.client.text_generation(
-                    prompt=prompt,
-                    model="openai/gpt-oss-20b",
-                    max_new_tokens=200,
-                    temperature=0.7,
-                    stop=["<|im_end|>"],
-                    return_full_text=False
-                )
-                
-                if result:
-                    logger.info("✅ GPT OSS text generation fallback successful")
-                    return result.strip()
-                    
-            except Exception as fallback_error:
-                logger.error(f"GPT OSS fallback also failed: {fallback_error}")
-            
+            logger.error(f"Mistral-7B generation failed: {e}")
             return ""
     
     def _build_financial_context(self, financial_data: Dict[str, Any], query_type: QueryType) -> str:
@@ -554,37 +590,14 @@ IMPORTANT: Use the specific numbers and details from my financial data above in 
                     results[model_type] = True
                     
                 elif model_type in ["conversational", "general"]:
-                    # Test GPT OSS model with chat completion if available
-                    if "openai/gpt-oss-20b" in model_name:
-                        try:
-                            test_response = self.client.chat.completions.create(
-                                model=model_name,
-                                messages=[
-                                    {"role": "system", "content": "You are a helpful assistant."},
-                                    {"role": "user", "content": "Hello, how can I help?"}
-                                ],
-                                max_tokens=10,
-                                temperature=0.5
-                            )
-                            results[model_type] = True
-                        except Exception as chat_error:
-                            logger.warning(f"Chat completion failed for {model_name}, trying text generation: {chat_error}")
-                            # Fallback to text generation
-                            result = self.client.text_generation(
-                                prompt="Hello, how can I help?",
-                                model=model_name,
-                                max_new_tokens=10,
-                                return_full_text=False
-                            )
-                            results[model_type] = True
-                    else:
-                        result = self.client.text_generation(
-                            prompt="Hello, how can I help?",
-                            model=model_name,
-                            max_new_tokens=10,
-                            return_full_text=False
-                        )
-                        results[model_type] = True
+                    # Test Mistral and Llama models with chat_completion
+                    messages = [{"role": "user", "content": "Hello, how can I help?"}]
+                    result = self.client.chat_completion(
+                        messages=messages,
+                        model=model_name,
+                        max_tokens=10
+                    )
+                    results[model_type] = True
                     
                 elif model_type == "financial":
                     result = self.client.text_classification(

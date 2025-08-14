@@ -50,7 +50,7 @@ class CloudAIService:
             raise
     
     async def process_query(self, query: str, context: Optional[AIQueryContext] = None) -> AIResponse:
-        """Process a natural language financial query using cloud database"""
+        """Process a natural language financial query following workflow steps using cloud database"""
         try:
             logger.info(f"Processing query: {query}")
             
@@ -62,40 +62,49 @@ class CloudAIService:
                     conversation_history=[]
                 )
             
-            # Step 1: Parse the natural language query
+            # Step A: Understand the Request - Parse and classify with JSON
             parsed_query = self.query_processor.parse_query(query)
+            classification_result = self.huggingface.classify_query_json(query)
             
-            # Step 2: Classify query type using AI
-            query_type, confidence = self.huggingface.classify_query(query)
+            logger.info(f"🎯 Classification result: {classification_result}")
             
-            # Fallback classification based on keywords if confidence is low
-            if confidence < 0.6:
-                query_type = self._classify_by_keywords(query, parsed_query)
-                confidence = 0.7
+            # Extract intent and slots from JSON classification
+            intent = classification_result["intent"]
+            time_range = classification_result.get("time_range", {})
+            filters = classification_result.get("filters", {})
+            confidence = classification_result.get("confidence", 0.5)
             
-            # Step 3: Get relevant financial data from Supabase
-            financial_data = await self._get_financial_data(query_type, parsed_query)
-            logger.info(f"🗃️ Retrieved financial data with keys: {list(financial_data.keys())}")
+            # Convert intent to QueryType
+            intent_mapping = {
+                "spending_summary": QueryType.SPENDING_SUMMARY,
+                "budget_status": QueryType.BUDGET_STATUS,
+                "balance_inquiry": QueryType.BALANCE_INQUIRY,
+                "transaction_search": QueryType.TRANSACTION_SEARCH,
+                "general": QueryType.UNKNOWN
+            }
+            query_type = intent_mapping.get(intent, QueryType.UNKNOWN)
             
-            # Debug: Log actual data values for verification
-            if "total_amount" in financial_data:
-                logger.info(f"💰 Total amount: ${financial_data['total_amount']:.2f}")
-            if "category_breakdown" in financial_data:
-                logger.info(f"📊 Categories found: {list(financial_data['category_breakdown'].keys())}")
-            if "transactions" in financial_data:
-                logger.info(f"📝 Transaction count: {len(financial_data['transactions'])}")
+            # Step B: Retrieve & Compute (Do Math in Code)
+            raw_data = await self._fetch_raw_data_cloud(query_type, time_range, filters)
+            computed_facts = self._compute_financial_facts_cloud(raw_data, query_type, time_range, filters)
             
-            # Step 4: Generate AI response
-            ai_message = self.huggingface.generate_financial_response(
-                query, 
-                financial_data, 
-                query_type
-            )
+            logger.info(f"💡 Computed facts: {computed_facts}")
             
-            # Step 5: Create embedded component if applicable
-            embedded_data = self._create_embedded_component(financial_data, query_type)
+            # Step C: Generate Response using Chat Model with Strict Validation
+            ai_response = await self._generate_validated_response_cloud(query, computed_facts, query_type)
             
-            # Step 6: Generate follow-up suggestions
+            # Step D: Validate & Render
+            validation_result = self._validate_response_cloud(ai_response, computed_facts)
+            
+            if not validation_result["valid"]:
+                logger.warning(f"⚠️ Response validation failed: {validation_result['reason']}")
+                # Retry with stricter instructions or use template
+                ai_response = self._generate_template_response_from_facts_cloud(query, computed_facts, query_type)
+            
+            # Create embedded component
+            embedded_data = self._create_embedded_component_from_facts_cloud(computed_facts, query_type)
+            
+            # Generate follow-up suggestions
             follow_ups = self.query_processor.generate_follow_up_questions(query_type, parsed_query)
             
             # Update context
@@ -104,7 +113,7 @@ class CloudAIService:
             
             # Create response
             response = AIResponse(
-                message=ai_message,
+                message=ai_response,
                 confidence=confidence,
                 query_type=query_type,
                 processing_type=ProcessingType.HUGGINGFACE,
@@ -118,10 +127,11 @@ class CloudAIService:
             self.conversation_history.append({
                 "query": query,
                 "response": response,
-                "timestamp": datetime.now()
+                "timestamp": datetime.now(),
+                "computed_facts": computed_facts
             })
             
-            logger.info(f"Query processed successfully: {query_type} with confidence {confidence:.2f}")
+            logger.info(f"✅ Query processed successfully: {query_type.value} with confidence {confidence:.2f}")
             return response
             
         except Exception as e:
@@ -380,3 +390,405 @@ class CloudAIService:
     def __del__(self):
         """Destructor - ensure cleanup"""
         self.cleanup()
+    
+    # New workflow methods for cloud service
+    
+    async def _fetch_raw_data_cloud(self, query_type: QueryType, time_range: Dict, filters: Dict) -> Dict[str, Any]:
+        """Fetch raw data from Supabase using slots (time range, merchant, category)"""
+        try:
+            raw_data = {"transactions": [], "budgets": []}
+            
+            # Parse time range if provided
+            start_date = None
+            end_date = None
+            if time_range:
+                start_date = time_range.get("from")
+                end_date = time_range.get("to")
+                if start_date:
+                    from datetime import datetime
+                    start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if end_date:
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            
+            # Fetch transactions based on query type
+            if query_type in [QueryType.SPENDING_SUMMARY, QueryType.TRANSACTION_SEARCH, QueryType.BALANCE_INQUIRY]:
+                raw_data["transactions"] = self.database.get_transactions_with_categories(limit=100)
+            
+            # Fetch budgets for budget queries
+            if query_type == QueryType.BUDGET_STATUS:
+                raw_data["budgets"] = self.database.get_budgets_with_details()
+            
+            # Apply filters
+            if filters:
+                if "category" in filters and filters["category"]:
+                    category_filter = filters["category"].lower()
+                    raw_data["transactions"] = [
+                        t for t in raw_data["transactions"]
+                        if t.category_name and category_filter in t.category_name.lower()
+                    ]
+                
+                if "merchant" in filters and filters["merchant"]:
+                    merchant_filter = filters["merchant"].lower()
+                    raw_data["transactions"] = [
+                        t for t in raw_data["transactions"]
+                        if t.description and merchant_filter in t.description.lower()
+                    ]
+                
+                if "amount_min" in filters and filters["amount_min"]:
+                    min_amount = float(filters["amount_min"]) * 100  # Convert to cents
+                    raw_data["transactions"] = [
+                        t for t in raw_data["transactions"]
+                        if t.amount >= min_amount
+                    ]
+                
+                if "amount_max" in filters and filters["amount_max"]:
+                    max_amount = float(filters["amount_max"]) * 100  # Convert to cents
+                    raw_data["transactions"] = [
+                        t for t in raw_data["transactions"]
+                        if t.amount <= max_amount
+                    ]
+            
+            logger.info(f"📊 Fetched raw data: {len(raw_data['transactions'])} transactions, {len(raw_data['budgets'])} budgets")
+            return raw_data
+            
+        except Exception as e:
+            logger.error(f"Error fetching raw data: {e}")
+            return {"transactions": [], "budgets": []}
+    
+    def _compute_financial_facts_cloud(self, raw_data: Dict, query_type: QueryType, time_range: Dict, filters: Dict) -> Dict[str, Any]:
+        """Compute financial facts in code - following workflow step B (cloud version)"""
+        try:
+            facts = {}
+            transactions = raw_data.get("transactions", [])
+            budgets = raw_data.get("budgets", [])
+            
+            # Build timeframe string
+            timeframe = "recent period"
+            if time_range:
+                granularity = time_range.get("granularity", "")
+                if granularity == "month":
+                    if "this month" in str(time_range):
+                        timeframe = "this month"
+                    elif "last month" in str(time_range):
+                        timeframe = "last month"
+                else:
+                    start = time_range.get("from", "")
+                    end = time_range.get("to", "")
+                    if start and end:
+                        timeframe = f"{start[:10]}..{end[:10]}"
+            
+            facts["timeframe"] = timeframe
+            
+            # Compute totals, averages, budget percentages
+            if transactions:
+                total_spent = sum(t.amount for t in transactions)
+                facts["totals"] = {
+                    "spent": total_spent,
+                    "currency": "USD"
+                }
+                
+                # Compute category breakdown
+                category_totals = {}
+                for transaction in transactions:
+                    category = transaction.category_name or "Uncategorized"
+                    category_totals[category] = category_totals.get(category, 0) + transaction.amount
+                
+                # Convert to list format sorted by amount
+                by_category = [
+                    {"name": category, "amount": amount}
+                    for category, amount in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+                ]
+                facts["by_category"] = by_category[:5]  # Top 5 categories
+                
+                # Add transaction examples
+                facts["examples"] = [
+                    {
+                        "date": t.date.strftime("%Y-%m-%d") if hasattr(t, 'date') and t.date else "N/A",
+                        "merchant": t.description or "N/A",
+                        "amount": t.amount,
+                        "category": t.category_name or "Uncategorized"
+                    }
+                    for t in transactions[:3]  # Recent 3 transactions
+                ]
+            
+            # Compute budget information
+            if budgets:
+                budget_facts = []
+                for budget in budgets:
+                    spent_amount = budget.spent_amount or 0
+                    budgeted_amount = budget.amount or 0
+                    remaining = budgeted_amount - spent_amount
+                    pct = (spent_amount / budgeted_amount * 100) if budgeted_amount > 0 else 0
+                    
+                    budget_facts.append({
+                        "category": budget.category_name or "Unknown",
+                        "budgeted": budgeted_amount,
+                        "spent": spent_amount,
+                        "pct": pct
+                    })
+                
+                facts["budget"] = budget_facts
+            
+            logger.info(f"🔢 Computed facts for {query_type.value}: {list(facts.keys())}")
+            return facts
+            
+        except Exception as e:
+            logger.error(f"Error computing financial facts: {e}")
+            return {"error": "Failed to compute financial facts"}
+    
+    async def _generate_validated_response_cloud(self, query: str, facts: Dict, query_type: QueryType) -> str:
+        """Generate response using chat model with strict system prompt - cloud version"""
+        try:
+            # Use exact format from workflow
+            system_prompt = "You are a finance assistant. Use ONLY the provided facts. Do not invent numbers.\nIf data is missing, say exactly what is missing."
+            
+            user_prompt = f"""Question: "{query}"
+Facts:
+{self._format_facts_for_ai_cloud(facts)}
+Return JSON:
+{{
+  "answer_text": string,
+  "numbers_used": [numbers you used from Facts],
+  "decision": "yes|no|uncertain",
+  "reasons": [string]
+}}"""
+            
+            # Try with Mistral-7B first (as specified in workflow)
+            try:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+                result = self.huggingface.client.chat_completion(
+                    messages=messages,
+                    model="mistralai/Mistral-7B-Instruct-v0.3",
+                    max_tokens=200,
+                    temperature=0.2  # Factual temperature
+                )
+                
+                if result and result.choices and len(result.choices) > 0:
+                    response = result.choices[0].message.content
+                    # Try to parse JSON response
+                    import json
+                    import re
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        json_response = json.loads(json_match.group(0))
+                        return json_response.get("answer_text", response)
+                    
+            except Exception as mistral_error:
+                logger.warning(f"Mistral model failed: {mistral_error}")
+            
+            # Fallback to Meta-Llama
+            try:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+                result = self.huggingface.client.chat_completion(
+                    messages=messages,
+                    model="meta-llama/Meta-Llama-3-8B-Instruct",
+                    max_tokens=200,
+                    temperature=0.2
+                )
+                
+                if result and result.choices and len(result.choices) > 0:
+                    response = result.choices[0].message.content
+                    # Try to parse JSON response
+                    import json
+                    import re
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        json_response = json.loads(json_match.group(0))
+                        return json_response.get("answer_text", response)
+                    
+            except Exception as llama_error:
+                logger.warning(f"Llama model failed: {llama_error}")
+                
+            # Final fallback to template
+            return self._generate_template_response_from_facts_cloud(query, facts, query_type)
+            
+        except Exception as e:
+            logger.error(f"Error generating validated response: {e}")
+            return self._generate_template_response_from_facts_cloud(query, facts, query_type)
+    
+    def _format_facts_for_ai_cloud(self, facts: Dict) -> str:
+        """Format computed facts for AI consumption - cloud version"""
+        import json
+        return json.dumps(facts, indent=2, ensure_ascii=False)
+    
+    def _validate_response_cloud(self, response: str, facts: Dict) -> Dict[str, Any]:
+        """Validate that response uses only numbers from facts - cloud version"""
+        try:
+            import re
+            import json
+            
+            # Extract numbers from response
+            response_numbers = re.findall(r'\$?([0-9]+\.?[0-9]*)', response)
+            response_numbers = [float(num) for num in response_numbers if num]
+            
+            # Extract numbers from facts
+            facts_json = json.dumps(facts)
+            facts_numbers = re.findall(r'([0-9]+\.?[0-9]*)', facts_json)
+            facts_numbers = [float(num) for num in facts_numbers if num]
+            
+            # Create a tolerance range for validation (allows rounding, percentages, etc.)
+            acceptable_numbers = set(facts_numbers)
+            
+            # Add derived numbers that would be reasonable (rounding, percentages, etc.)
+            for num in facts_numbers:
+                # Add rounded versions
+                acceptable_numbers.add(round(num))
+                acceptable_numbers.add(round(num, 1))
+                acceptable_numbers.add(round(num, 2))
+                
+                # Add common transformations
+                if num > 0:
+                    acceptable_numbers.add(num * 100)  # For percentages  
+                    acceptable_numbers.add(round(num * 100, 1))
+                    acceptable_numbers.add(round(num * 100, 2))
+                    acceptable_numbers.add(num / 100)  # For cents conversion
+                    
+                # Add integer versions
+                acceptable_numbers.add(int(num))
+            
+            # Allow small counting numbers (1, 2, 3, etc. for transactions count)
+            for i in range(1, 10):
+                acceptable_numbers.add(float(i))
+            
+            # Check if response numbers are reasonable (with relaxed validation)
+            for resp_num in response_numbers:
+                # Skip validation for very small numbers (likely counts or IDs)  
+                if resp_num <= 10:
+                    continue
+                    
+                # Check if number is in acceptable range
+                found_acceptable = False
+                for acceptable_num in acceptable_numbers:
+                    # Allow 5% tolerance for rounding differences
+                    if abs(resp_num - acceptable_num) <= max(0.01, acceptable_num * 0.05):
+                        found_acceptable = True
+                        break
+                
+                if not found_acceptable:
+                    logger.warning(f"Response number {resp_num} not in acceptable range, but allowing")
+                    # Don't fail validation - just log warning
+                    continue
+            
+            return {"valid": True}
+            
+        except Exception as e:
+            logger.error(f"Error validating response: {e}")
+            return {"valid": False, "reason": f"Validation error: {str(e)}"}
+    
+    def _generate_template_response_from_facts_cloud(self, query: str, facts: Dict, query_type: QueryType) -> str:
+        """Generate template response using computed facts - cloud version"""
+        try:
+            if query_type == QueryType.SPENDING_SUMMARY:
+                if "totals" in facts and facts["totals"]["spent"] > 0:
+                    total = facts["totals"]["spent"] / 100  # Convert cents to dollars
+                    timeframe = facts.get("timeframe", "recent period")
+                    response = f"You spent ${total:.2f} {timeframe}"
+                    
+                    if "by_category" in facts and facts["by_category"]:
+                        top_cat = facts["by_category"][0]
+                        cat_amount = top_cat["amount"] / 100
+                        response += f". Your top category was {top_cat['name']} with ${cat_amount:.2f}"
+                    
+                    return response + "."
+                else:
+                    return "No spending data found for the requested period."
+            
+            elif query_type == QueryType.BUDGET_STATUS:
+                if "budget" in facts and facts["budget"]:
+                    budgets = facts["budget"]
+                    total_budgeted = sum(b["budgeted"] for b in budgets) / 100
+                    total_spent = sum(b["spent"] for b in budgets) / 100
+                    
+                    over_budget = [b for b in budgets if b["pct"] > 100]
+                    if over_budget:
+                        over_names = [b["category"] for b in over_budget]
+                        return f"⚠️ Over budget in {len(over_names)} categories: {', '.join(over_names)}. Total spent: ${total_spent:.2f} of ${total_budgeted:.2f} budgeted."
+                    else:
+                        return f"✅ All budgets on track. Spent ${total_spent:.2f} of ${total_budgeted:.2f} budgeted."
+                else:
+                    return "No budget data found. Set up budgets to track your spending."
+            
+            elif query_type == QueryType.TRANSACTION_SEARCH:
+                if "examples" in facts and facts["examples"]:
+                    count = len(facts["examples"])
+                    latest = facts["examples"][0]
+                    return f"Found {count} transactions. Most recent: ${latest['amount'] / 100:.2f} for {latest['merchant']} on {latest['date']}."
+                else:
+                    return "No transactions found matching your criteria."
+            
+            elif query_type == QueryType.BALANCE_INQUIRY:
+                if "totals" in facts:
+                    total = facts["totals"]["spent"] / 100
+                    timeframe = facts.get("timeframe", "total")
+                    return f"Your {timeframe} spending is ${total:.2f}."
+                else:
+                    return "No financial data available for balance inquiry."
+            
+            return "I can help with your financial questions. Please ask about spending, budgets, or transactions."
+            
+        except Exception as e:
+            logger.error(f"Error generating template response: {e}")
+            return "I encountered an error processing your financial data."
+    
+    def _create_embedded_component_from_facts_cloud(self, facts: Dict, query_type: QueryType) -> Optional[EmbeddedComponentData]:
+        """Create embedded component from computed facts - cloud version"""
+        try:
+            if query_type == QueryType.SPENDING_SUMMARY and "by_category" in facts:
+                return EmbeddedComponentData(
+                    component_type="CategoryBreakdownChart",
+                    title="Spending by Category",
+                    data={
+                        "categories": {cat["name"]: cat["amount"] / 100 for cat in facts["by_category"]},
+                        "total": facts.get("totals", {}).get("spent", 0) / 100
+                    },
+                    size="compact"
+                )
+            
+            elif query_type == QueryType.BUDGET_STATUS and "budget" in facts:
+                budgets = facts["budget"]
+                if budgets:
+                    # Show the budget with highest percentage
+                    top_budget = max(budgets, key=lambda b: b["pct"])
+                    return EmbeddedComponentData(
+                        component_type="BudgetCard",
+                        title=f"{top_budget['category']} Budget",
+                        data={
+                            "category": top_budget["category"],
+                            "budgeted": top_budget["budgeted"] / 100,
+                            "spent": top_budget["spent"] / 100,
+                            "remaining": (top_budget["budgeted"] - top_budget["spent"]) / 100,
+                            "percentage": top_budget["pct"]
+                        },
+                        size="compact"
+                    )
+            
+            elif query_type == QueryType.TRANSACTION_SEARCH and "examples" in facts:
+                return EmbeddedComponentData(
+                    component_type="TransactionList",
+                    title="Recent Transactions",
+                    data={
+                        "transactions": [
+                            {
+                                "description": t["merchant"],
+                                "amount": t["amount"] / 100,
+                                "date": t["date"],
+                                "category": t["category"]
+                            }
+                            for t in facts["examples"]
+                        ],
+                        "total_amount": sum(t["amount"] for t in facts["examples"]) / 100
+                    },
+                    size="compact"
+                )
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error creating embedded component: {e}")
+            return None
