@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Chip, Text, useTheme } from 'react-native-paper';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Chip, useTheme } from 'react-native-paper';
 
 interface QuickQueryButtonsProps {
   onQuickQuery: (query: string) => void;
@@ -21,23 +21,14 @@ export default function QuickQueryButtons({
   const theme = useTheme();
 
   return (
-    <View style={styles.container}>
-      <Text 
-        variant="titleMedium" 
-        style={[styles.title, { color: theme.colors.onBackground }]}
-        testID="quick-queries-title"
+    <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      <ScrollView 
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        style={styles.scrollView}
+        testID="quick-queries-scroll"
       >
-        Quick Questions
-      </Text>
-      <Text 
-        variant="bodyMedium" 
-        style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}
-        testID="quick-queries-subtitle"
-      >
-        Tap a suggestion or type your own question
-      </Text>
-      
-      <View style={styles.chipsContainer}>
         {QUICK_QUERIES.map((item, index) => (
           <Chip
             key={index}
@@ -50,32 +41,26 @@ export default function QuickQueryButtons({
             {item.label}
           </Chip>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  scrollView: {
+    flexGrow: 0,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
-  title: {
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    marginBottom: 16,
-    textAlign: 'center',
-    opacity: 0.7,
-  },
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
   chip: {
-    margin: 4,
+    marginRight: 8,
   },
 });

@@ -100,7 +100,7 @@ class HuggingFaceManager:
             # Try OpenAI GPT OSS model with chat completion first
             try:
                 logger.info("🤖 Attempting GPT OSS model...")
-                response = self._generate_with_gpt_oss(query, context)
+                response = self._generate_with_gpt_oss(query, context, query_type)
                 if response:
                     logger.info(f"✅ GPT OSS success: {response[:100]}...")
                     return response
@@ -121,16 +121,36 @@ Response (use the specific financial data above - include actual numbers and amo
             # Try conversational model
             try:
                 logger.info("🤖 Attempting conversational model...")
-                result = self.client.text_generation(
-                    prompt=prompt,
-                    model=self.models["conversational"],
-                    max_new_tokens=200,
-                    temperature=0.7,
-                    do_sample=True,
-                    return_full_text=False
-                )
+                # Check if it's a GPT OSS model that needs chat completion
+                if "openai/gpt-oss-20b" in self.models["conversational"]:
+                    messages = [
+                        {"role": "system", "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided."},
+                        {"role": "user", "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response."}
+                    ]
+                    
+                    response = self.client.chat.completions.create(
+                        model=self.models["conversational"],
+                        messages=messages,
+                        max_tokens=200,
+                        temperature=0.7,
+                        stream=False
+                    )
+                    
+                    if response and hasattr(response, 'choices') and response.choices:
+                        result = response.choices[0].message.content
+                    else:
+                        result = None
+                else:
+                    result = self.client.text_generation(
+                        prompt=prompt,
+                        model=self.models["conversational"],
+                        max_new_tokens=200,
+                        temperature=0.7,
+                        do_sample=True,
+                        return_full_text=False
+                    )
                 
-                response = result.strip()
+                response = result.strip() if result else ""
                 if response:
                     logger.info(f"✅ Conversational model success: {response[:100]}...")
                     return response
@@ -143,15 +163,35 @@ Response (use the specific financial data above - include actual numbers and amo
             # Fallback to general model
             try:
                 logger.info("🤖 Attempting general model...")
-                result = self.client.text_generation(
-                    prompt=prompt,
-                    model=self.models["general"],
-                    max_new_tokens=150,
-                    temperature=0.6,
-                    return_full_text=False
-                )
+                # Check if it's a GPT OSS model that needs chat completion
+                if "openai/gpt-oss-20b" in self.models["general"]:
+                    messages = [
+                        {"role": "system", "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided."},
+                        {"role": "user", "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response."}
+                    ]
+                    
+                    response = self.client.chat.completions.create(
+                        model=self.models["general"],
+                        messages=messages,
+                        max_tokens=150,
+                        temperature=0.6,
+                        stream=False
+                    )
+                    
+                    if response and hasattr(response, 'choices') and response.choices:
+                        result = response.choices[0].message.content
+                    else:
+                        result = None
+                else:
+                    result = self.client.text_generation(
+                        prompt=prompt,
+                        model=self.models["general"],
+                        max_new_tokens=150,
+                        temperature=0.6,
+                        return_full_text=False
+                    )
                 
-                response = result.strip()
+                response = result.strip() if result else ""
                 if response:
                     logger.info(f"✅ General model success: {response[:100]}...")
                     return response
@@ -171,19 +211,90 @@ Response (use the specific financial data above - include actual numbers and amo
             logger.error(f"Response generation failed: {e}")
             return self._generate_template_response(query, financial_data, query_type)
     
-    def _generate_with_gpt_oss(self, query: str, context: str) -> str:
-        """Generate response using OpenAI GPT OSS 20B model with chat completion API"""
+    def _get_optimized_prompt(self, query: str, context: str, query_type: QueryType) -> list:
+        """Get optimized prompt messages based on query type"""
+        
+        if query_type == QueryType.BUDGET_STATUS:
+            system_prompt = """You are a budget analysis expert. Your task is to analyze budget performance and provide clear, actionable insights.
+
+CRITICAL REQUIREMENTS:
+1. Use ONLY the specific budget data provided
+2. Include exact dollar amounts from the data
+3. Calculate percentages and remaining amounts
+4. Provide clear status indicators (✅ on track, ⚠️ close to limit, 🚨 over budget)
+5. Be direct and factual - no generic advice
+
+RESPONSE FORMAT:
+- Start with overall budget health summary
+- List specific budget categories with amounts and percentages
+- Include remaining amounts and recommendations"""
+
+            user_prompt = f"""Analyze my budget status:
+
+BUDGET DATA: {context}
+
+Question: {query}
+
+Provide a clear budget analysis using the exact numbers above. Include specific dollar amounts, percentages, and remaining budget for each category."""
+
+        elif query_type == QueryType.TRANSACTION_SEARCH or "categories" in query.lower() or "category" in query.lower():
+            system_prompt = """You are a spending category analyst. Your expertise is analyzing transaction patterns and categorizing expenses.
+
+CRITICAL REQUIREMENTS:
+1. Use ONLY the specific transaction data provided
+2. Group spending by categories with exact amounts
+3. Show category percentages of total spending
+4. Identify top spending categories
+5. Include actual transaction examples when relevant
+
+RESPONSE FORMAT:
+- List categories ranked by spending amount
+- Include dollar amounts and percentages for each category
+- Show total spending clearly
+- Add specific transaction examples if helpful"""
+
+            user_prompt = f"""Analyze my spending by categories:
+
+TRANSACTION DATA: {context}
+
+Question: {query}
+
+Break down my spending by categories using the exact transaction data above. Show specific dollar amounts for each category and identify my top spending areas."""
+
+        else:
+            # Default optimized prompt for spending summaries and other queries
+            system_prompt = """You are a financial data analyst. Your job is to provide clear, data-driven insights about spending patterns.
+
+CRITICAL REQUIREMENTS:
+1. Use ONLY the specific financial data provided
+2. Include exact dollar amounts and transaction counts
+3. Provide clear summary statistics
+4. Be concise and factual
+5. Format information clearly with specific numbers
+
+RESPONSE FORMAT:
+- Start with key totals and summary
+- Break down by relevant categories or time periods
+- Include specific transaction details when relevant"""
+
+            user_prompt = f"""Analyze my financial data:
+
+FINANCIAL DATA: {context}
+
+Question: {query}
+
+Provide a clear analysis using the exact financial data above. Include specific dollar amounts and transaction details."""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+    
+    def _generate_with_gpt_oss(self, query: str, context: str, query_type: QueryType = None) -> str:
+        """Generate response using OpenAI GPT OSS 20B model with optimized prompts per query type"""
         try:
-            messages = [
-                {
-                    "role": "system", 
-                    "content": "You are a financial assistant. CRITICAL: You MUST use the specific financial data provided in your response. Always include actual dollar amounts, category names, and specific numbers from the user's financial context. Never give generic responses - use the real data provided. Be conversational but always reference the specific financial information given."
-                },
-                {
-                    "role": "user",
-                    "content": f"Question: {query}\n\nMy Financial Data: {context}\n\nIMPORTANT: Use the specific numbers and details from my financial data above in your response. Include actual dollar amounts and category names."
-                }
-            ]
+            # Get query-type specific prompt
+            messages = self._get_optimized_prompt(query, context, query_type)
             
             # Use chat completion API for GPT OSS model
             response = self.client.chat.completions.create(

@@ -6,7 +6,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import { TextInput, Button, useTheme } from 'react-native-paper';
+import { TextInput, useTheme } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatMessage } from '../../types/ai';
 import { useChat } from '../../context/ChatContext';
@@ -102,10 +102,6 @@ export default function ChatInterface({
         showsVerticalScrollIndicator={false}
         testID="chat-messages-scroll"
       >
-        {messages.length === 0 && (
-          <QuickQueryButtons onQuickQuery={handleQuickQuery} disabled={isLoading} />
-        )}
-        
         {messages.map((message) => (
           <MessageBubble
             key={message.id}
@@ -116,6 +112,8 @@ export default function ChatInterface({
         
         {isLoading && <AILoadingIndicator />}
       </ScrollView>
+
+      <QuickQueryButtons onQuickQuery={handleQuickQuery} disabled={isLoading} />
 
       <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface }]}>
         <TextInput
