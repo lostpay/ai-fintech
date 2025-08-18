@@ -4,31 +4,29 @@ import { PaperProvider } from 'react-native-paper';
 import { BudgetPerformanceChart } from '../../../src/components/charts/BudgetPerformanceChart';
 import { MonthlyBudgetPerformance } from '../../../src/types/BudgetAnalytics';
 
-// Mock react-native-svg-charts to avoid SVG rendering issues in tests
-jest.mock('react-native-svg-charts', () => ({
-  BarChart: ({ data, svg }: any) => {
+// Mock victory-native to avoid SVG rendering issues in tests
+jest.mock('victory-native', () => ({
+  CartesianChart: ({ data, xKey, yKeys, children }: any) => {
     const MockComponent = require('react-native').View;
+    const MockText = require('react-native').Text;
     return (
-      <MockComponent testID={`bar-chart-${svg?.fill}`}>
-        {JSON.stringify({ dataLength: data?.length || 0, color: svg?.fill })}
+      <MockComponent testID="cartesian-chart">
+        <MockText>Data: {data?.length || 0} items</MockText>
+        <MockText>X Key: {xKey}</MockText>
+        <MockText>Y Keys: {yKeys?.join(', ')}</MockText>
+        {children && children({ 
+          points: yKeys?.reduce((acc: any, key: string) => ({ ...acc, [key]: data }), {}), 
+          chartBounds: { left: 0, right: 100, top: 0, bottom: 100 } 
+        })}
       </MockComponent>
     );
   },
-  XAxis: ({ data, formatLabel }: any) => {
+  Bar: ({ points, color }: any) => {
     const MockComponent = require('react-native').View;
+    const MockText = require('react-native').Text;
     return (
-      <MockComponent testID="x-axis">
-        {data?.map((item: any, index: number) => 
-          formatLabel ? formatLabel(item, index) : `Month ${index + 1}`
-        ).join(', ')}
-      </MockComponent>
-    );
-  },
-  YAxis: ({ data, formatLabel }: any) => {
-    const MockComponent = require('react-native').View;
-    return (
-      <MockComponent testID="y-axis">
-        {formatLabel ? 'Formatted Values' : 'Y Axis'}
+      <MockComponent testID={`bar-${color}`}>
+        <MockText>Bar - Points: {points?.length || 0}, Color: {color}</MockText>
       </MockComponent>
     );
   },

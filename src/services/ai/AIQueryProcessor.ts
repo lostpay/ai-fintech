@@ -1,4 +1,5 @@
 import HuggingFaceModelManager from './HuggingFaceModelManager';
+import { HybridIntentRouter } from './HybridIntentRouter';
 import {
   ParsedQuery,
   QueryClassification,
@@ -12,6 +13,10 @@ import {
 } from '../../types/ai';
 
 class AIQueryProcessor {
+  private hybridRouter = HybridIntentRouter.getInstance();
+  private initialized = false;
+
+  // Legacy query templates for fallback compatibility
   private queryTemplates: QueryTemplate[] = [
     {
       pattern: /how much (did I|have I) spend/i,
@@ -57,6 +62,19 @@ class AIQueryProcessor {
     'food', 'dining', 'groceries', 'entertainment', 'transport', 'transportation',
     'utilities', 'shopping', 'health', 'medical', 'insurance', 'gas', 'fuel'
   ];
+
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+    
+    try {
+      await this.hybridRouter.initialize();
+      this.initialized = true;
+      console.log('✅ AIQueryProcessor initialized with hybrid routing');
+    } catch (error) {
+      console.warn('Hybrid router initialization failed, using legacy processing:', error);
+      this.initialized = false;
+    }
+  }
 
   async parseQuery(query: string): Promise<ParsedQuery> {
     const entities = this.extractEntities(query);
@@ -129,8 +147,45 @@ class AIQueryProcessor {
 
   async processQuery(query: string): Promise<QueryParsingResult> {
     try {
-      const parsedQuery = await this.parseQuery(query);
-      const classification = await this.classifyQuery(query);
+      // Initialize if needed
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      let parsedQuery: ParsedQuery;
+      let classification: QueryClassification;
+
+      // Use hybrid routing if available
+      if (this.initialized && this.hybridRouter.isInitialized()) {
+        const routeResult = await this.hybridRouter.routeIntent(query);
+        const extractedSlots = this.hybridRouter.extractSlots(query);
+        
+        // Convert hybrid router results to legacy format
+        parsedQuery = {
+          intent: routeResult.intent,
+          entities: this.convertSlotsToEntities(extractedSlots),
+          timeframe: extractedSlots.start_date && extractedSlots.end_date ? {
+            type: extractedSlots.granularity as any || 'month',
+            value: 'custom',
+            startDate: new Date(extractedSlots.start_date),
+            endDate: new Date(extractedSlots.end_date)
+          } : undefined,
+          category: extractedSlots.category || undefined,
+          amount: extractedSlots.amount_min || undefined
+        };
+
+        classification = {
+          type: this.hybridRouter.mapIntentToQueryType(routeResult.intent),
+          confidence: routeResult.confidence,
+          intent: routeResult.intent as FinancialIntent,
+          entities: parsedQuery.entities,
+          processingType: this.determineProcessingType(parsedQuery)
+        };
+      } else {
+        // Fallback to legacy processing
+        parsedQuery = await this.parseQuery(query);
+        classification = await this.classifyQuery(query);
+      }
       
       const validationResult = this.validateQuery(parsedQuery, classification);
       
@@ -155,10 +210,32 @@ class AIQueryProcessor {
           processingType: 'on-device'
         },
         isValid: false,
-        errors: [`Failed to process query: ${error.message}`],
+        errors: [`Failed to process query: ${error instanceof Error ? error.message : 'Unknown error'}`],
         suggestions: this.getGeneralSuggestions()
       };
     }
+  }
+
+  private convertSlotsToEntities(slots: any): QueryEntity[] {
+    const entities: QueryEntity[] = [];
+    
+    if (slots.category) {
+      entities.push({ type: 'category', value: slots.category, confidence: 0.8 });
+    }
+    
+    if (slots.merchant) {
+      entities.push({ type: 'merchant', value: slots.merchant, confidence: 0.8 });
+    }
+    
+    if (slots.top_n) {
+      entities.push({ type: 'top_n', value: slots.top_n.toString(), confidence: 0.9 });
+    }
+    
+    if (slots.start_date && slots.end_date) {
+      entities.push({ type: 'timeframe', value: `${slots.start_date} to ${slots.end_date}`, confidence: 0.9 });
+    }
+    
+    return entities;
   }
 
   private extractEntities(query: string): QueryEntity[] {

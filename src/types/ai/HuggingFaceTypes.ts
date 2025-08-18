@@ -11,7 +11,8 @@ export type ModelType =
   | 'conversational'
   | 'financial_analysis' 
   | 'classification'
-  | 'general_purpose';
+  | 'general_purpose'
+  | 'embedding';
 
 export interface HuggingFaceConfig {
   apiKey: string;

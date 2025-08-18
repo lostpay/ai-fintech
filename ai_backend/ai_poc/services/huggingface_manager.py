@@ -34,16 +34,38 @@ class HuggingFaceManager:
     def classify_query_json(self, query: str) -> dict:
         """Classify query using exact JSON schema from workflow"""
         try:
-            # Use the exact prompt from the workflow
+            # Get current date for context
+            from datetime import datetime, timedelta
+            current_date = datetime.now()
+            current_date_str = current_date.strftime("%Y-%m-%d")
+            
+            # Enhanced prompt with date context and ranking detection
             classification_prompt = f"""You are an intent classifier. Return JSON only.
-User: "{query}"
+
+Current date: {current_date_str}
+
+User query: "{query}"
+
+IMPORTANT RULES:
+1. For date ranges, use ACTUAL ISO dates (YYYY-MM-DD), NOT placeholders
+2. For "lowest/smallest/minimum" spending: use intent="spending_summary" with order="ascending"
+3. For "highest/biggest/top" spending: use intent="spending_summary" with order="descending"  
+4. For "last 30 days": from="{(current_date - timedelta(days=30)).strftime('%Y-%m-%d')}", to="{current_date_str}"
 
 JSON schema:
 {{
   "intent": "spending_summary | budget_status | transaction_search | balance_inquiry | general",
   "time_range": {{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "granularity": "day|week|month"}},
-  "filters": {{"merchant": string|null, "category": string|null, "amount_min": number|null, "amount_max": number|null}}
-}}"""
+  "filters": {{"merchant": string|null, "category": string|null, "order": "ascending|descending|null", "top_n": number|null, "amount_min": number|null, "amount_max": number|null}},
+  "confidence": 0.0-1.0
+}}
+
+Examples:
+- "lowest spending category last 30 days" → intent="spending_summary", order="ascending", top_n=1
+- "biggest expense this month" → intent="spending_summary", order="descending", top_n=1  
+- "last 30 days transactions" → from="{(current_date - timedelta(days=30)).strftime('%Y-%m-%d')}", to="{current_date_str}"
+
+Return JSON only:"""
 
             # Try with Mistral-7B for JSON classification (as specified in workflow)
             try:
@@ -118,35 +140,84 @@ JSON schema:
         return query_type, confidence
     
     def _classify_by_keywords_json(self, query: str) -> dict:
-        """Keyword-based classification returning JSON schema format"""
+        """Enhanced keyword-based classification returning JSON schema format"""
         query_lower = query.lower()
+        from datetime import datetime, timedelta
+        now = datetime.now()
         
-        # Extract time references
+        # Detect intent based on keywords
+        intent = "general"
+        
+        # Category ranking patterns
+        if any(word in query_lower for word in ["lowest", "smallest", "minimum"]) and "category" in query_lower:
+            intent = "spending_summary"
+        elif any(word in query_lower for word in ["highest", "biggest", "largest", "top"]) and "category" in query_lower:
+            intent = "spending_summary"
+        elif "budget" in query_lower:
+            intent = "budget_status"
+        elif any(word in query_lower for word in ["transaction", "purchase", "bought", "spent"]):
+            intent = "transaction_search"
+        elif any(word in query_lower for word in ["spending", "spend", "expense", "total"]):
+            intent = "spending_summary"
+        
+        # Extract time references with actual dates
         time_range = {}
         if "this month" in query_lower:
-            from datetime import datetime
-            now = datetime.now()
             time_range = {
                 "from": f"{now.year}-{now.month:02d}-01",
-                "to": f"{now.year}-{now.month:02d}-{now.day:02d}",
+                "to": now.strftime("%Y-%m-%d"),
                 "granularity": "month"
             }
         elif "last month" in query_lower:
-            from datetime import datetime
-            now = datetime.now()
             prev_month = now.month - 1 if now.month > 1 else 12
             prev_year = now.year if now.month > 1 else now.year - 1
+            last_day = 31 if prev_month in [1,3,5,7,8,10,12] else 30 if prev_month != 2 else 28
             time_range = {
                 "from": f"{prev_year}-{prev_month:02d}-01",
-                "to": f"{prev_year}-{prev_month:02d}-31",
+                "to": f"{prev_year}-{prev_month:02d}-{last_day:02d}",
                 "granularity": "month"
+            }
+        elif "last 30 days" in query_lower or "30 days" in query_lower:
+            start_date = now - timedelta(days=30)
+            time_range = {
+                "from": start_date.strftime("%Y-%m-%d"),
+                "to": now.strftime("%Y-%m-%d"),
+                "granularity": "day"
+            }
+        elif "last 7 days" in query_lower or "week" in query_lower:
+            start_date = now - timedelta(days=7)
+            time_range = {
+                "from": start_date.strftime("%Y-%m-%d"),
+                "to": now.strftime("%Y-%m-%d"),
+                "granularity": "day"
+            }
+        elif "yesterday" in query_lower:
+            yesterday = now - timedelta(days=1)
+            time_range = {
+                "from": yesterday.strftime("%Y-%m-%d"),
+                "to": yesterday.strftime("%Y-%m-%d"),
+                "granularity": "day"
             }
         
         # Extract filters
         filters = {}
         
+        # Detect ordering and ranking
+        if "lowest" in query_lower or "smallest" in query_lower or "minimum" in query_lower:
+            filters["order"] = "ascending"
+            filters["top_n"] = 1
+        elif "highest" in query_lower or "biggest" in query_lower or "largest" in query_lower:
+            filters["order"] = "descending"
+            filters["top_n"] = 1
+        elif "top" in query_lower:
+            filters["order"] = "descending"
+            # Extract number if present (e.g., "top 5")
+            import re
+            match = re.search(r'top\s+(\d+)', query_lower)
+            filters["top_n"] = int(match.group(1)) if match else 1
+        
         # Check for category mentions
-        categories = ["groceries", "dining", "coffee", "gas", "shopping", "entertainment", "utilities", "rent"]
+        categories = ["groceries", "dining", "coffee", "gas", "shopping", "entertainment", "utilities", "rent", "food", "restaurant"]
         for category in categories:
             if category in query_lower:
                 filters["category"] = category

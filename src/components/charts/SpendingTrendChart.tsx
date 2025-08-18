@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { LineChart, XAxis, YAxis } from 'react-native-svg-charts';
-import { Circle, G, Text as SvgText } from 'react-native-svg';
+import { CartesianChart, Line } from 'victory-native';
 import { SpendingTrend } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -32,35 +31,16 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
     );
   }
 
-  const chartData = data.map(trend => trend.amount / 100); // Convert cents to dollars
-  const maxValue = Math.max(...chartData);
-  const minValue = Math.min(...chartData);
-
-  const Decorator = ({ x, y, data: decoratorData }: any) => {
-    return decoratorData.map((value: number, index: number) => (
-      <G key={index}>
-        <Circle
-          cx={x(index)}
-          cy={y(value)}
-          r={4}
-          stroke={theme.colors.primary}
-          fill={theme.colors.primary}
-        />
-        {showTrendIndicators && data[index] && (
-          <SvgText
-            x={x(index)}
-            y={y(value) - 15}
-            fontSize={10}
-            fill={theme.colors.onSurface}
-            alignmentBaseline="middle"
-            textAnchor="middle"
-          >
-            {formatCurrency(value * 100)}
-          </SvgText>
-        )}
-      </G>
-    ));
-  };
+  const chartData = data.map((trend, index) => ({
+    month: new Date(trend.period + '-01').toLocaleDateString('en-US', { month: 'short' }),
+    amount: trend.amount / 100, // Convert cents to dollars
+    period: trend.period,
+    trend_direction: trend.trend_direction,
+    change_percentage: trend.change_percentage,
+  }));
+  
+  const maxValue = Math.max(...chartData.map(d => d.amount));
+  const minValue = Math.min(...chartData.map(d => d.amount));
 
   const getTrendIcon = (direction: SpendingTrend['trend_direction']) => {
     switch (direction) {
@@ -90,44 +70,28 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
         Spending Trends
       </Text>
       
-      <View style={styles.chartWrapper}>
-        <View style={styles.yAxisContainer}>
-          <YAxis
-            data={chartData}
-            contentInset={{ top: 20, bottom: 20 }}
-            svg={{ fontSize: 10, fill: theme.colors.onSurface }}
-            formatLabel={(value) => formatCurrency(value * 100)}
-            style={styles.yAxis}
+      <CartesianChart
+        data={chartData}
+        xKey="month"
+        yKeys={["amount"]}
+        axisOptions={{
+          font: {
+            size: 10,
+            color: theme.colors.onSurface,
+          },
+          formatYLabel: (value) => formatCurrency(value * 100),
+        }}
+        chartPressState={{}}
+      >
+        {({ points, chartBounds }) => (
+          <Line
+            points={points.amount}
+            color={theme.colors.primary}
+            strokeWidth={2}
+            chartBounds={chartBounds}
           />
-        </View>
-        
-        <View style={styles.chartContent}>
-          <LineChart
-            style={{ height, width: screenWidth - 120 }}
-            data={chartData}
-            svg={{
-              stroke: theme.colors.primary,
-              strokeWidth: 2,
-            }}
-            contentInset={{ top: 20, bottom: 20 }}
-          >
-            <Decorator />
-          </LineChart>
-          
-          <XAxis
-            style={styles.xAxis}
-            data={chartData}
-            formatLabel={(_, index) => {
-              const period = data[index]?.period;
-              if (!period) return '';
-              const monthDate = new Date(period + '-01');
-              return monthDate.toLocaleDateString('en-US', { month: 'short' });
-            }}
-            contentInset={{ left: 20, right: 20 }}
-            svg={{ fontSize: 10, fill: theme.colors.onSurface }}
-          />
-        </View>
-      </View>
+        )}
+      </CartesianChart>
 
       {/* Trend indicators */}
       {showTrendIndicators && (
@@ -136,7 +100,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
             Monthly Changes:
           </Text>
           <View style={styles.trendList}>
-            {data.slice(1).map((trend, index) => (
+            {chartData.slice(1).map((trend, index) => (
               <View key={index} style={styles.trendItem}>
                 <MaterialIcons
                   name={getTrendIcon(trend.trend_direction) as any}
@@ -163,7 +127,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
         <View style={styles.statItem}>
           <Text variant="bodySmall" style={styles.statLabel}>Average</Text>
           <Text variant="bodyMedium" style={styles.statValue}>
-            {formatCurrency(chartData.reduce((sum, val) => sum + val, 0) / chartData.length * 100)}
+            {formatCurrency(chartData.reduce((sum, item) => sum + item.amount, 0) / chartData.length * 100)}
           </Text>
         </View>
         <View style={styles.statItem}>
@@ -207,23 +171,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
     fontWeight: '600',
-  },
-  chartWrapper: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  yAxisContainer: {
-    width: 60,
-  },
-  yAxis: {
-    width: 60,
-  },
-  chartContent: {
-    flex: 1,
-  },
-  xAxis: {
-    marginTop: 10,
-    height: 30,
   },
   trendIndicators: {
     marginTop: 16,

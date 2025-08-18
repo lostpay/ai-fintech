@@ -72,6 +72,9 @@ export class AIService {
           await HuggingFaceModelManager.initialize();
           console.log('HuggingFace models initialized (fallback mode)');
           
+          await AIQueryProcessor.initialize();
+          console.log('Enhanced AIQueryProcessor initialized with hybrid routing');
+          
           await LangChainOrchestrator.initialize();
           console.log('LangChain orchestrator initialized (fallback mode)');
         } catch (error) {
@@ -129,10 +132,10 @@ export class AIService {
       }
     }
 
-    // Fallback to original placeholder logic
+    // Fallback to enhanced placeholder logic
     await this.delay(1500);
 
-    // Enhanced fallback response logic with real database data
+    // Enhanced fallback response logic with better free-form query handling
     const lowerQuery = query.toLowerCase();
 
     try {
@@ -140,7 +143,67 @@ export class AIService {
       const databaseService = DatabaseService.getInstance();
       await databaseService.initialize();
 
-      if (lowerQuery.includes('budget') || lowerQuery.includes('spending')) {
+      // Enhanced pattern matching for free-form queries
+      const patterns = {
+        topCategories: /\b(top|biggest|highest|largest|number\s*1|#\s*1)\b.*\b(category|categories|spending|expense)\b/i,
+        spending: /\b(spend|spent|expense|expenditure|cost|money)\b/i,
+        budget: /\b(budget|budgets|budgeted)\b/i,
+        transactions: /\b(transaction|transactions|recent|last|purchase|purchases)\b/i,
+        merchant: /\b(at|from)\s+([A-Z][a-zA-Z\s&'-]+)(?:\s|$)/,
+        timeframe: {
+          lastNDays: /\blast (\d+) days?\b/i,
+          thisMonth: /\bthis month\b/i,
+          lastMonth: /\blast month\b/i
+        }
+      };
+
+      // Enhanced pattern matching for top categories queries
+      if (patterns.topCategories.test(lowerQuery)) {
+        const transactions = await databaseService.getTransactionsWithCategories(undefined, 'expense');
+        const categoryTotals = transactions.reduce((acc, t) => {
+          const category = t.category_name || 'Uncategorized';
+          acc[category] = (acc[category] || 0) + t.amount;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        const sortedCategories = Object.entries(categoryTotals)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 5);
+        
+        if (sortedCategories.length > 0) {
+          const [topCategory, topAmount] = sortedCategories[0];
+          return {
+            content: `Your #1 top spending category is "${topCategory}" with $${(topAmount / 100).toFixed(2)} spent.${sortedCategories.length > 1 ? ` Your top 5 categories are: ${sortedCategories.map(([cat, amt]) => `${cat} ($${(amt / 100).toFixed(2)})`).join(', ')}.` : ''}`,
+            message: `Your #1 top spending category is "${topCategory}" with $${(topAmount / 100).toFixed(2)} spent.`,
+            confidence: 0.95,
+            queryType: 'spending_summary' as QueryType,
+            embeddedData: {
+              type: 'CategoryBreakdownChart',
+              title: 'Top Spending Categories',
+              chartData: sortedCategories.map(([name, amount]) => ({
+                x: name,
+                y: amount / 100,
+                label: name,
+              })),
+              metadata: {
+                totalAmount: Object.values(categoryTotals).reduce((sum, amount) => sum + amount, 0),
+                currency: 'USD',
+                categories: []
+              },
+              size: 'compact',
+              chatContext: true,
+            },
+            suggestedActions: [
+              'Analyze spending trends',
+              'Set category budgets',
+              'View transaction details'
+            ]
+          };
+        }
+      }
+
+      // Enhanced budget and spending queries  
+      if (patterns.budget.test(lowerQuery) || patterns.spending.test(lowerQuery)) {
         const budgets = await databaseService.getBudgetsWithDetails();
         const currentMonth = new Date();
         const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -174,7 +237,71 @@ export class AIService {
         };
       }
 
-      if (lowerQuery.includes('transaction') || lowerQuery.includes('recent')) {
+      // Enhanced merchant-specific queries
+      const merchantMatch = patterns.merchant.exec(query);
+      if (merchantMatch) {
+        const merchantName = merchantMatch[2].trim();
+        const allTransactions = await databaseService.getTransactionsWithCategories();
+        const merchantTransactions = allTransactions.filter(t => 
+          t.description?.toLowerCase().includes(merchantName.toLowerCase())
+        );
+        
+        const totalSpent = merchantTransactions.reduce((sum, t) => sum + t.amount, 0);
+        
+        return {
+          content: `You've spent $${(totalSpent / 100).toFixed(2)} at ${merchantName} across ${merchantTransactions.length} transactions.${merchantTransactions.length === 0 ? ' No transactions found for this merchant.' : ''}`,
+          message: `You've spent $${(totalSpent / 100).toFixed(2)} at ${merchantName} across ${merchantTransactions.length} transactions.`,
+          confidence: 0.85,
+          queryType: 'transaction_search' as QueryType,
+          embeddedData: merchantTransactions.length > 0 ? {
+            type: 'TransactionList',
+            title: `Transactions at ${merchantName}`,
+            transactions: merchantTransactions.slice(0, 10),
+            totalCount: merchantTransactions.length,
+            size: 'compact',
+            chatContext: true,
+          } : undefined,
+          suggestedActions: [
+            'View all transactions',
+            'Set spending alerts for merchant',
+            'Analyze spending patterns'
+          ]
+        };
+      }
+
+      // Enhanced timeframe-specific queries
+      const lastNDaysMatch = patterns.timeframe.lastNDays.exec(lowerQuery);
+      if (lastNDaysMatch) {
+        const days = parseInt(lastNDaysMatch[1]);
+        const endDate = new Date();
+        const startDate = new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
+        const timeframeTransactions = await databaseService.getTransactions(undefined, 'expense', startDate, endDate);
+        
+        const totalSpent = timeframeTransactions.reduce((sum, t) => sum + t.amount, 0);
+        const avgDaily = totalSpent / days;
+        
+        return {
+          content: `In the last ${days} days, you've spent $${(totalSpent / 100).toFixed(2)} across ${timeframeTransactions.length} transactions. That's an average of $${(avgDaily / 100).toFixed(2)} per day.`,
+          message: `In the last ${days} days, you've spent $${(totalSpent / 100).toFixed(2)} across ${timeframeTransactions.length} transactions.`,
+          confidence: 0.9,
+          queryType: 'spending_summary' as QueryType,
+          embeddedData: timeframeTransactions.length > 0 ? {
+            type: 'TransactionList',
+            title: `Last ${days} Days Spending`,
+            transactions: timeframeTransactions.slice(0, 10),
+            totalCount: timeframeTransactions.length,
+            size: 'compact',
+            chatContext: true,
+          } : undefined,
+          suggestedActions: [
+            'View spending trends',
+            'Compare with previous period',
+            'Set spending goals'
+          ]
+        };
+      }
+
+      if (patterns.transactions.test(lowerQuery)) {
         const recentTransactions = await databaseService.getTransactionsWithCategories(undefined, undefined, undefined, undefined);
         const last10 = recentTransactions.slice(0, 10);
         
@@ -475,7 +602,7 @@ export class AIService {
         amount: filteredTransactions.reduce((sum, t) => sum + t.amount, 0),
         transactions: filteredTransactions,
         timeframe: parsedQuery.timeframe?.value || 'custom',
-        categories: [...new Set(filteredTransactions.map(t => t.category_name).filter(Boolean))]
+        categories: Array.from(new Set(filteredTransactions.map(t => t.category_name).filter(Boolean)))
       };
     } catch (error) {
       console.error('Error getting spending data:', error);
@@ -573,7 +700,7 @@ export class AIService {
       return {
         transactions: transactions.slice(0, 20),
         amount: transactions.reduce((sum, t) => sum + t.amount, 0),
-        categories: [...new Set(transactions.map(t => t.category_name).filter(Boolean))]
+        categories: Array.from(new Set(transactions.map(t => t.category_name).filter(Boolean)))
       };
     } catch (error) {
       console.error('Error getting transaction data:', error);

@@ -38,7 +38,7 @@ export interface ParsedQuery {
 }
 
 export interface QueryEntity {
-  type: 'amount' | 'category' | 'timeframe' | 'action';
+  type: 'amount' | 'category' | 'timeframe' | 'action' | 'merchant' | 'top_n';
   value: string;
   confidence: number;
 }

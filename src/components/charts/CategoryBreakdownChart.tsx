@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { PieChart } from 'react-native-svg-charts';
+import { CartesianChart, Bar } from 'victory-native';
 import { CategoryPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -32,18 +32,15 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
     );
   }
 
-  // Prepare data for pie chart
+  // Prepare data for horizontal bar chart
   const chartData = data.map((category, index) => ({
-    value: category.spent_amount / 100, // Convert cents to dollars
-    svg: {
-      fill: category.category_color,
-      onPress: () => console.log(`Pressed ${category.category_name}`),
-    },
-    key: `pie-${index}`,
-    category,
+    category: category.category_name.length > 8 ? category.category_name.substring(0, 8) + '...' : category.category_name,
+    amount: category.spent_amount / 100, // Convert cents to dollars
+    color: category.category_color,
+    fullCategory: category,
   }));
 
-  const totalSpent = chartData.reduce((sum, item) => sum + item.value, 0);
+  const totalSpent = chartData.reduce((sum, item) => sum + item.amount, 0);
 
   const getStatusIcon = (status: CategoryPerformance['status']) => {
     switch (status) {
@@ -77,37 +74,52 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
         Spending by Category
       </Text>
 
+      {/* Total Spent Summary */}
+      <View style={styles.totalSummary}>
+        <Text variant="bodySmall" style={styles.centerLabel}>Total Spent</Text>
+        <Text variant="headlineSmall" style={styles.centerValue}>
+          {formatCurrency(totalSpent * 100)}
+        </Text>
+      </View>
+
       <View style={styles.chartSection}>
-        {/* Pie Chart */}
-        <View style={styles.pieChartContainer}>
-          <PieChart
-            style={{ height, width: height }}
-            data={chartData}
-            innerRadius="40%"
-            outerRadius="80%"
-          />
-          
-          {/* Center total */}
-          <View style={[styles.centerTotal, { width: height, height }]}>
-            <Text variant="bodySmall" style={styles.centerLabel}>Total Spent</Text>
-            <Text variant="headlineSmall" style={styles.centerValue}>
-              {formatCurrency(totalSpent * 100)}
-            </Text>
-          </View>
-        </View>
+        {/* Horizontal Bar Chart */}
+        <CartesianChart
+          data={chartData}
+          xKey="category"
+          yKeys={["amount"]}
+          axisOptions={{
+            font: {
+              size: 10,
+              color: theme.colors.onSurface,
+            },
+            formatYLabel: (value) => formatCurrency(value * 100),
+          }}
+          chartPressState={{}}
+        >
+          {({ points, chartBounds }) => (
+            <Bar
+              points={points.amount}
+              color={theme.colors.primary}
+              barWidth={20}
+              chartBounds={chartBounds}
+            />
+          )}
+        </CartesianChart>
 
         {/* Legend */}
         {showLegend && (
           <View style={styles.legendContainer}>
-            {data.map((category, index) => {
-              const percentage = totalSpent > 0 ? (category.spent_amount / 100 / totalSpent) * 100 : 0;
+            {chartData.map((item, index) => {
+              const category = item.fullCategory;
+              const percentage = totalSpent > 0 ? (item.amount / totalSpent) * 100 : 0;
               return (
                 <View key={index} style={styles.legendItem}>
                   <View style={styles.legendLeft}>
                     <View 
                       style={[
                         styles.legendColor, 
-                        { backgroundColor: category.category_color }
+                        { backgroundColor: item.color }
                       ]} 
                     />
                     <View style={styles.categoryInfo}>
@@ -197,18 +209,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontWeight: '600',
   },
-  chartSection: {
+  totalSummary: {
     alignItems: 'center',
-  },
-  pieChartContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerTotal: {
-    position: 'absolute',
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
   },
   centerLabel: {
     opacity: 0.7,
@@ -216,6 +222,9 @@ const styles = StyleSheet.create({
   },
   centerValue: {
     fontWeight: '700',
+  },
+  chartSection: {
+    alignItems: 'center',
   },
   legendContainer: {
     width: '100%',

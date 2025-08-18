@@ -46,6 +46,14 @@ class HuggingFaceModelManager {
       temperature: Number(Constants.expoConfig?.extra?.AI_TEMPERATURE) || 0.5,
       maxTokens: Number(Constants.expoConfig?.extra?.AI_MAX_TOKENS) || 100,
       isLoaded: false
+    },
+    embedding: {
+      name: Constants.expoConfig?.extra?.HF_EMBEDDING_MODEL || 'sentence-transformers/all-MiniLM-L6-v2',
+      type: 'embedding',
+      endpoint: '',
+      temperature: 0.0,
+      maxTokens: 0,
+      isLoaded: false
     }
   };
 
@@ -94,6 +102,10 @@ class HuggingFaceModelManager {
 
   getClassificationModel(): HuggingFaceModel {
     return this.models.classification;
+  }
+
+  getEmbeddingModel(): HuggingFaceModel {
+    return this.models.embedding;
   }
 
   async switchModel(queryType: QueryType): Promise<HuggingFaceModel> {
@@ -269,6 +281,67 @@ class HuggingFaceModelManager {
       console.error('Financial analysis failed:', error);
       throw error;
     }
+  }
+
+  async generateEmbedding(text: string): Promise<number[]> {
+    if (!this.hf) {
+      throw new Error('HuggingFace client not initialized');
+    }
+
+    try {
+      const model = this.getEmbeddingModel();
+      
+      // Use feature extraction API for sentence-transformers models
+      const result = await this.hf.featureExtraction({
+        model: model.name,
+        inputs: text
+      });
+
+      // Handle different response formats
+      if (Array.isArray(result)) {
+        // If it's a nested array (batch), take the first embedding
+        if (Array.isArray(result[0])) {
+          return result[0] as number[];
+        }
+        // If it's a flat array, return as is
+        return result as number[];
+      }
+
+      throw new Error('Unexpected embedding response format');
+    } catch (error) {
+      console.error('Embedding generation failed:', error);
+      
+      // Fallback: generate pseudo-embedding based on text characteristics
+      return this.generateFallbackEmbedding(text);
+    }
+  }
+
+  private generateFallbackEmbedding(text: string): number[] {
+    // Simple fallback: create pseudo-embedding based on text properties
+    const words = text.toLowerCase().split(/\s+/);
+    const embedding = new Array(384).fill(0); // Match all-MiniLM-L6-v2 dimension
+    
+    // Basic text features
+    embedding[0] = Math.min(text.length / 100, 1); // Text length
+    embedding[1] = Math.min(words.length / 50, 1); // Word count
+    
+    // Simple word-based features
+    words.forEach((word, index) => {
+      const hash = this.simpleHash(word) % 380; // Use remaining dimensions
+      embedding[hash + 2] = Math.min(embedding[hash + 2] + 0.1, 1);
+    });
+    
+    return embedding;
+  }
+
+  private simpleHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
   }
 
   private getModelTypeForQuery(queryType: QueryType): ModelType {

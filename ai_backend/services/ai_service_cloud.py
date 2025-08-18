@@ -471,6 +471,14 @@ class CloudAIService:
                         timeframe = "this month"
                     elif "last month" in str(time_range):
                         timeframe = "last month"
+                elif granularity == "day":
+                    start = time_range.get("from", "")
+                    end = time_range.get("to", "")
+                    if start and end:
+                        if start == end:
+                            timeframe = f"on {start}"
+                        else:
+                            timeframe = f"from {start} to {end}"
                 else:
                     start = time_range.get("from", "")
                     end = time_range.get("to", "")
@@ -493,12 +501,29 @@ class CloudAIService:
                     category = transaction.category_name or "Uncategorized"
                     category_totals[category] = category_totals.get(category, 0) + transaction.amount
                 
+                # Check for ordering preference from filters
+                order = filters.get("order", "descending")  # Default to highest first
+                top_n = filters.get("top_n", 5)  # Default to top 5
+                
+                # Sort based on order preference
+                reverse_sort = (order == "descending")  # True for highest first, False for lowest first
+                
                 # Convert to list format sorted by amount
                 by_category = [
                     {"name": category, "amount": amount}
-                    for category, amount in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+                    for category, amount in sorted(category_totals.items(), key=lambda x: x[1], reverse=reverse_sort)
                 ]
-                facts["by_category"] = by_category[:5]  # Top 5 categories
+                facts["by_category"] = by_category[:top_n]  # Top N categories based on request
+                
+                # Add specific ranking info for single category requests
+                if top_n == 1 and by_category:
+                    ranking_type = "highest" if order == "descending" else "lowest"
+                    facts["ranking_info"] = {
+                        "type": ranking_type,
+                        "category": by_category[0]["name"],
+                        "amount": by_category[0]["amount"],
+                        "position": 1
+                    }
                 
                 # Add transaction examples
                 facts["examples"] = [
@@ -685,7 +710,18 @@ Return JSON:
         """Generate template response using computed facts - cloud version"""
         try:
             if query_type == QueryType.SPENDING_SUMMARY:
-                if "totals" in facts and facts["totals"]["spent"] > 0:
+                # Handle specific ranking requests
+                if "ranking_info" in facts:
+                    ranking = facts["ranking_info"]
+                    cat_amount = ranking["amount"] / 100
+                    timeframe = facts.get("timeframe", "recent period")
+                    ranking_type = ranking["type"]
+                    category_name = ranking["category"]
+                    
+                    return f"Your {ranking_type} spending category {timeframe} is '{category_name}' with ${cat_amount:.2f} spent."
+                
+                # Handle general spending summary
+                elif "totals" in facts and facts["totals"]["spent"] > 0:
                     total = facts["totals"]["spent"] / 100  # Convert cents to dollars
                     timeframe = facts.get("timeframe", "recent period")
                     response = f"You spent ${total:.2f} {timeframe}"

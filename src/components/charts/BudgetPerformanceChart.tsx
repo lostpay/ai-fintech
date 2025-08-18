@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { BarChart, XAxis, YAxis } from 'react-native-svg-charts';
-import { Text as SvgText } from 'react-native-svg';
+import { CartesianChart, Bar } from 'victory-native';
 import { MonthlyBudgetPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 
@@ -32,17 +31,13 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
   }
 
   const chartData = data.map((month, index) => ({
+    month: new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
     budgeted: month.total_budgeted / 100, // Convert cents to dollars
     spent: month.total_spent / 100,
-    month: month.month,
     utilization: month.budget_utilization,
-    index,
   }));
 
   const maxValue = Math.max(...chartData.map(d => Math.max(d.budgeted, d.spent)));
-
-  const budgetedData = chartData.map(d => d.budgeted);
-  const spentData = chartData.map(d => d.spent);
 
 
   return (
@@ -51,61 +46,36 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
         Budget vs Actual Spending
       </Text>
       
-      <View style={styles.chartWrapper}>
-        <View style={styles.yAxisContainer}>
-          <YAxis
-            data={chartData}
-            yAccessor={({ item }) => Math.max(item.budgeted, item.spent)}
-            contentInset={{ top: 20, bottom: 20 }}
-            svg={{ fontSize: 10, fill: theme.colors.onSurface }}
-            formatLabel={(value) => formatCurrency(value * 100)}
-            style={styles.yAxis}
-          />
-        </View>
-        
-        <View style={styles.chartContent}>
-          <View style={{ height, width: screenWidth - 120 }}>
-            {/* Budgeted amounts bar chart */}
-            <BarChart
-              style={StyleSheet.absoluteFill}
-              data={budgetedData}
-              svg={{ 
-                fill: theme.colors.primary, 
-                stroke: theme.colors.primary,
-                strokeWidth: 1
-              }}
-              contentInset={{ top: 20, bottom: 20 }}
-              spacingInner={0.2}
-              spacingOuter={0.1}
+      <CartesianChart
+        data={chartData}
+        xKey="month"
+        yKeys={["budgeted", "spent"]}
+        axisOptions={{
+          font: {
+            size: 10,
+            color: theme.colors.onSurface,
+          },
+          formatYLabel: (value) => formatCurrency(value * 100),
+        }}
+        chartPressState={{}}
+      >
+        {({ points, chartBounds }) => (
+          <>
+            <Bar
+              points={points.budgeted}
+              color={theme.colors.primary}
+              barWidth={20}
+              chartBounds={chartBounds}
             />
-            
-            {/* Spent amounts bar chart */}
-            <BarChart
-              style={StyleSheet.absoluteFill}
-              data={spentData}
-              svg={{ 
-                fill: theme.colors.secondary, 
-                stroke: theme.colors.secondary,
-                strokeWidth: 1
-              }}
-              contentInset={{ top: 20, bottom: 20 }}
-              spacingInner={0.2}
-              spacingOuter={0.1}
+            <Bar
+              points={points.spent}
+              color={theme.colors.secondary}
+              barWidth={20}
+              chartBounds={chartBounds}
             />
-          </View>
-          
-          <XAxis
-            style={styles.xAxis}
-            data={chartData}
-            formatLabel={(_, index) => {
-              const monthDate = new Date(chartData[index].month + '-01');
-              return monthDate.toLocaleDateString('en-US', { month: 'short' });
-            }}
-            contentInset={{ left: 20, right: 20 }}
-            svg={{ fontSize: 10, fill: theme.colors.onSurface }}
-          />
-        </View>
-      </View>
+          </>
+        )}
+      </CartesianChart>
       
       {showDetails && (
         <View style={styles.legend}>
@@ -126,7 +96,7 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
           {chartData.map((item, index) => (
             <View key={index} style={styles.indicatorItem}>
               <Text variant="bodySmall" style={styles.indicatorMonth}>
-                {new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'short' })}
+                {item.month}
               </Text>
               <Text 
                 variant="bodySmall" 
@@ -163,23 +133,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
     fontWeight: '600',
-  },
-  chartWrapper: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  yAxisContainer: {
-    width: 60,
-  },
-  yAxis: {
-    width: 60,
-  },
-  chartContent: {
-    flex: 1,
-  },
-  xAxis: {
-    marginTop: 10,
-    height: 30,
   },
   legend: {
     flexDirection: 'row',
