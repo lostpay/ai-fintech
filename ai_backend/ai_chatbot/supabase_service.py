@@ -402,3 +402,205 @@ class SupabaseService:
             logger.info("Supabase service cleaned up")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+    # ML-related methods
+    async def get_user_transactions(self, user_id: str, days_back: int = 90) -> List[Dict]:
+        """
+        Get user transactions for ML training/prediction
+        """
+        try:
+            from datetime import timedelta
+            start_date = (datetime.now() - timedelta(days=days_back)).date()
+
+            response = self.client.table('transactions')\
+                .select('*, categories(name)')\
+                .eq('user_id', user_id)\
+                .eq('transaction_type', 'expense')\
+                .gte('date', start_date.isoformat())\
+                .execute()
+
+            transactions = []
+            for row in response.data:
+                transactions.append({
+                    'date': row['date'],
+                    'amount': row['amount'] / 100,  # Convert from cents
+                    'category': row['categories']['name'] if row.get('categories') else 'Other',
+                    'description': row['description'],
+                    'type': row['transaction_type']
+                })
+
+            return transactions
+        except Exception as e:
+            logger.error(f"Error fetching user transactions: {e}")
+            return []
+
+    async def store_predictions(self, user_id: str, predictions: List[Dict],
+                               timeframe: str, confidence: float):
+        """
+        Store ML predictions in database
+        """
+        try:
+            # Create predictions table if it doesn't exist
+            # This would normally be done via migrations
+
+            prediction_data = {
+                'user_id': user_id,
+                'predictions': predictions,
+                'timeframe': timeframe,
+                'confidence': confidence,
+                'created_at': datetime.now().isoformat()
+            }
+
+            # Store in ml_predictions table
+            response = self.client.table('ml_predictions')\
+                .upsert(prediction_data, on_conflict='user_id,timeframe')\
+                .execute()
+
+            logger.info(f"Stored predictions for user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error storing predictions: {e}")
+            # If table doesn't exist, create it
+            try:
+                self._create_ml_tables()
+                # Retry the insert
+                response = self.client.table('ml_predictions')\
+                    .upsert(prediction_data, on_conflict='user_id,timeframe')\
+                    .execute()
+                return True
+            except:
+                return False
+
+    async def store_budget(self, user_id: str, budget_data: Dict, month: str):
+        """
+        Store ML-generated budget recommendations
+        """
+        try:
+            budget_record = {
+                'user_id': user_id,
+                'month': month,
+                'categories': budget_data['categories'],
+                'total_budget': budget_data['total'],
+                'methodology': budget_data.get('methodology', {}),
+                'confidence': budget_data.get('confidence', 0.5),
+                'created_at': datetime.now().isoformat()
+            }
+
+            response = self.client.table('ml_budgets')\
+                .upsert(budget_record, on_conflict='user_id,month')\
+                .execute()
+
+            logger.info(f"Stored budget for user {user_id}, month {month}")
+            return True
+        except Exception as e:
+            logger.error(f"Error storing budget: {e}")
+            # Try to create table if it doesn't exist
+            try:
+                self._create_ml_tables()
+                response = self.client.table('ml_budgets')\
+                    .upsert(budget_record, on_conflict='user_id,month')\
+                    .execute()
+                return True
+            except:
+                return False
+
+    async def store_patterns(self, user_id: str, patterns: Dict):
+        """
+        Store detected spending patterns
+        """
+        try:
+            pattern_record = {
+                'user_id': user_id,
+                'patterns': patterns,
+                'detected_at': datetime.now().isoformat()
+            }
+
+            response = self.client.table('ml_patterns')\
+                .upsert(pattern_record, on_conflict='user_id')\
+                .execute()
+
+            logger.info(f"Stored patterns for user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error storing patterns: {e}")
+            # Try to create table if it doesn't exist
+            try:
+                self._create_ml_tables()
+                response = self.client.table('ml_patterns')\
+                    .upsert(pattern_record, on_conflict='user_id')\
+                    .execute()
+                return True
+            except:
+                return False
+
+    async def store_model_metadata(self, user_id: str, metrics: Dict, timestamp: str):
+        """
+        Store ML model training metadata
+        """
+        try:
+            metadata_record = {
+                'user_id': user_id,
+                'metrics': metrics,
+                'trained_at': timestamp,
+                'model_version': '1.0.0'
+            }
+
+            response = self.client.table('ml_model_metadata')\
+                .upsert(metadata_record, on_conflict='user_id')\
+                .execute()
+
+            logger.info(f"Stored model metadata for user {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error storing model metadata: {e}")
+            # Try to create table if it doesn't exist
+            try:
+                self._create_ml_tables()
+                response = self.client.table('ml_model_metadata')\
+                    .upsert(metadata_record, on_conflict='user_id')\
+                    .execute()
+                return True
+            except:
+                return False
+
+    def _create_ml_tables(self):
+        """
+        Create ML-related tables in Supabase
+        Note: This is a fallback. Tables should be created via Supabase dashboard or migrations
+        """
+        logger.warning("ML tables don't exist. Please create them via Supabase dashboard:")
+        logger.warning("""
+        CREATE TABLE ml_predictions (
+            user_id TEXT,
+            timeframe TEXT,
+            predictions JSONB,
+            confidence FLOAT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (user_id, timeframe)
+        );
+
+        CREATE TABLE ml_budgets (
+            user_id TEXT,
+            month TEXT,
+            categories JSONB,
+            total_budget FLOAT,
+            methodology JSONB,
+            confidence FLOAT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (user_id, month)
+        );
+
+        CREATE TABLE ml_patterns (
+            user_id TEXT PRIMARY KEY,
+            patterns JSONB,
+            detected_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE ml_model_metadata (
+            user_id TEXT PRIMARY KEY,
+            metrics JSONB,
+            trained_at TIMESTAMP,
+            model_version TEXT
+        );
+        """)
+        raise Exception("ML tables need to be created in Supabase dashboard")
