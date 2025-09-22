@@ -45,8 +45,10 @@ export default {
         projectId: 'cee870a7-b07f-4c57-892d-2a442bb2cb93',
       },
       // Supabase Configuration
-      supabaseUrl: process.env.SUPABASE_URL,
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+      // Chatbot Backend URL
+      chatbotApiUrl: process.env.EXPO_PUBLIC_CHATBOT_API_URL,
       // AI Service Configuration - loaded from .env
       HUGGINGFACE_API_KEY: process.env.HUGGINGFACE_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,

@@ -4,6 +4,7 @@
  */
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 // API Types
 export interface AIQueryRequest {
@@ -78,18 +79,34 @@ export interface DatabaseStats {
 
 // Configuration with environment detection
 const getBaseUrl = () => {
+  // Try to get from Expo Constants first (works in Expo environments)
+  const expoUrl = Constants.expoConfig?.extra?.chatbotApiUrl;
+  if (expoUrl) {
+    console.log('Using Chatbot API URL from Expo config:', expoUrl);
+    return expoUrl;
+  }
+
+  // Fallback to environment variable
+  if (process.env.EXPO_PUBLIC_CHATBOT_API_URL) {
+    console.log('Using Chatbot API URL from env:', process.env.EXPO_PUBLIC_CHATBOT_API_URL);
+    return process.env.EXPO_PUBLIC_CHATBOT_API_URL;
+  }
+
   // Check if we're in web environment (Expo web, browser)
   if (typeof window !== 'undefined' && window.location) {
-    return 'http://localhost:8000/api'; // Web/browser environment
+    return 'http://192.168.1.103:7000'; // Chatbot gateway service
   }
-  
+
   // Mobile platform detection
-  return Platform.select({
-    ios: 'http://localhost:8000/api', // iOS simulator uses localhost
-    android: 'http://192.168.1.12:8000/api', // Real Android device - your computer's IP
-    web: 'http://localhost:8000/api', // Web browser
-    default: 'http://localhost:8000/api'
+  const defaultUrl = Platform.select({
+    ios: 'http://localhost:7000', // iOS simulator uses localhost
+    android: 'http://192.168.1.103:7000', // Real Android device - your computer's IP
+    web: 'http://192.168.1.103:7000', // Web browser
+    default: 'http://192.168.1.103:7000'
   });
+
+  console.log('Using default Chatbot API URL:', defaultUrl);
+  return defaultUrl;
 };
 
 const DEFAULT_CONFIG = {
@@ -221,16 +238,36 @@ export class AIBackendClient {
       await this.initializeSession();
     }
 
-    const request: AIQueryRequest = {
-      query,
-      session_id: this.sessionId,
-      context,
+    // Map to new chatbot API format
+    const request = {
+      user_id: context?.user_id || 'default-user',
+      message: query,
+      lang: context?.lang || 'en',
+      session_id: this.sessionId
     };
 
-    return this.makeRequest<AIQueryResponse>('/ai/query', {
+    // Call the new chatbot endpoint
+    const response = await this.makeRequest<any>('/chat', {
       method: 'POST',
       body: JSON.stringify(request),
     });
+
+    // Transform response to match expected format
+    return {
+      message: response.text || response.message,
+      confidence: response.confidence || 0.95,
+      query_type: response.type || 'general',
+      processing_type: 'backend',
+      embedded_data: response.data ? {
+        component_type: 'data',
+        title: 'Query Results',
+        data: response.data,
+        size: 'medium'
+      } : undefined,
+      suggested_actions: [],
+      model_used: 'qwen2.5:7b',
+      processing_time_ms: 0
+    };
   }
 
   /**
@@ -241,7 +278,13 @@ export class AIBackendClient {
       await this.initializeSession();
     }
 
-    return this.makeRequest<ConversationHistoryResponse>(`/ai/conversation/${this.sessionId}`);
+    // Chatbot backend doesn't have conversation history endpoint yet
+    return {
+      session_id: this.sessionId || '',
+      exchanges: [],
+      total_exchanges: 0,
+      session_start: new Date().toISOString()
+    };
   }
 
   /**
@@ -252,21 +295,22 @@ export class AIBackendClient {
       await this.initializeSession();
     }
 
-    await this.makeRequest(`/ai/conversation/${this.sessionId}`, {
-      method: 'DELETE',
-    });
+    // Create new session ID to clear history
+    this.sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    await AsyncStorage.setItem('@ai_session_id', this.sessionId);
   }
 
   /**
    * Get smart query suggestions based on conversation context
    */
   async getQuerySuggestions(): Promise<string[]> {
-    if (!this.sessionId) {
-      await this.initializeSession();
-    }
-
-    const response = await this.makeRequest<{ suggestions: string[] }>(`/ai/session/${this.sessionId}/suggestions`);
-    return response.suggestions;
+    // Return default suggestions since chatbot backend doesn't have this endpoint
+    return [
+      'How much did I spend this month?',
+      'Show my budget status',
+      'What are my recent transactions?',
+      'Show spending by category'
+    ];
   }
 
   // Health and System Methods
@@ -275,28 +319,38 @@ export class AIBackendClient {
    * Check backend health
    */
   async checkHealth(): Promise<HealthResponse> {
-    return this.makeRequest<HealthResponse>('/health');
+    const response = await this.makeRequest<any>('/health');
+    return {
+      status: response.status || 'unknown',
+      message: response.message || 'Chatbot Gateway Service',
+      version: '1.0.0',
+      timestamp: response.timestamp || new Date().toISOString(),
+      components: response.components
+    };
   }
 
   /**
    * Check detailed backend health
    */
   async checkDetailedHealth(): Promise<HealthResponse> {
-    return this.makeRequest<HealthResponse>('/health/detailed');
+    // Chatbot backend only has /health endpoint
+    return this.checkHealth();
   }
 
   /**
    * Run system tests
    */
   async runSystemTest(): Promise<any> {
-    return this.makeRequest('/ai/system/test');
+    // Not available in chatbot backend, return health check instead
+    return this.checkHealth();
   }
 
   /**
    * Get AI models status
    */
   async getModelsStatus(): Promise<any> {
-    return this.makeRequest('/ai/models/status');
+    // Not available in chatbot backend
+    return { status: 'using_chatbot_backend', model: 'qwen2.5:7b' };
   }
 
   // Database Methods
@@ -305,7 +359,17 @@ export class AIBackendClient {
    * Get database statistics
    */
   async getDatabaseStats(): Promise<DatabaseStats> {
-    return this.makeRequest<DatabaseStats>('/database/stats');
+    // Chatbot backend doesn't have this endpoint
+    // Return mock stats for now
+    return {
+      total_transactions: 0,
+      total_categories: 0,
+      total_budgets: 0,
+      date_range: {
+        earliest: null,
+        latest: null
+      }
+    };
   }
 
   /**
@@ -327,24 +391,24 @@ export class AIBackendClient {
       });
     }
 
-    const queryString = searchParams.toString();
-    const endpoint = queryString ? `/database/transactions?${queryString}` : '/database/transactions';
-    
-    return this.makeRequest(endpoint);
+    // Chatbot backend doesn't have this endpoint
+    return [];
   }
 
   /**
    * Get budgets information
    */
   async getBudgets(): Promise<any> {
-    return this.makeRequest('/database/budgets');
+    // Chatbot backend doesn't have this endpoint
+    return [];
   }
 
   /**
    * Get categories information
    */
   async getCategories(): Promise<any> {
-    return this.makeRequest('/database/categories');
+    // Chatbot backend doesn't have this endpoint
+    return [];
   }
 
   /**
@@ -364,10 +428,8 @@ export class AIBackendClient {
       });
     }
 
-    const queryString = searchParams.toString();
-    const endpoint = queryString ? `/database/spending-summary?${queryString}` : '/database/spending-summary';
-    
-    return this.makeRequest(endpoint);
+    // Chatbot backend doesn't have this endpoint
+    return { total: 0, by_category: {} };
   }
 
   // Utility Methods
@@ -377,13 +439,13 @@ export class AIBackendClient {
    */
   async testConnectivity(): Promise<boolean> {
     try {
-      console.log('🔍 Testing backend connectivity...');
-      const result = await this.makeRequest('/ping');
-      console.log('✅ Backend connectivity test successful:', result);
-      return true;
+      console.log('🔍 Testing chatbot backend connectivity...');
+      const result = await this.makeRequest('/health');
+      console.log('✅ Chatbot backend connectivity test successful:', result);
+      return result.status === 'healthy';
     } catch (error) {
-      console.error('❌ Backend connectivity test failed:', error);
-      console.log('🔧 Attempted URL:', `${this.baseUrl}/ping`);
+      console.error('❌ Chatbot backend connectivity test failed:', error);
+      console.log('🔧 Attempted URL:', `${this.baseUrl}/health`);
       return false;
     }
   }
@@ -400,10 +462,10 @@ export class AIBackendClient {
     const timestamp = new Date().toISOString();
     
     try {
-      await this.makeRequest('/ping');
+      const result = await this.makeRequest('/health');
       return {
         url: this.baseUrl,
-        connected: true,
+        connected: result.status === 'healthy',
         timestamp
       };
     } catch (error) {

@@ -47,7 +47,7 @@ interface CategorySyncData {
 export class BackendSyncService {
   private static instance: BackendSyncService;
   private config: BackendConfig = {
-    baseUrl: 'http://localhost:8000/api',
+    baseUrl: 'http://192.168.1.103:8000/api',
     timeout: 10000,
     enabled: false // Disabled by default since we use single database
   };

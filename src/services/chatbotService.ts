@@ -6,7 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configuration
-const API_BASE_URL = process.env.EXPO_PUBLIC_CHATBOT_API_URL || 'http://localhost:7000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_CHATBOT_API_URL || 'http://192.168.1.103:7000';
 const DEFAULT_LANGUAGE = 'zh';
 
 // Types

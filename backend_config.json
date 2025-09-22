@@ -1,7 +1,7 @@
 {
   "backend_sync": {
     "enabled": false,
-    "base_url": "http://192.168.1.12:8000/api",
+    "base_url": "http://192.168.1.103:8000/api",
     "timeout": 10000,
     "description": "Configuration for backend synchronization. Set enabled to true to sync mobile transactions to the backend database."
   },

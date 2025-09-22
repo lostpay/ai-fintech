@@ -19,6 +19,7 @@ import {
 } from '../screens';
 import { CategoryFormScreen } from '../screens/CategoryFormScreen';
 import AIAssistantScreen from '../screens/AIAssistantScreen';
+import SimpleChatScreen from '../screens/SimpleChatScreen';
 
 // Import types
 import type { RootTabParamList, RootStackParamList } from './types';
@@ -240,9 +241,9 @@ export const AppNavigator: React.FC = () => {
             presentation: 'card',
           }}
         />
-        <Stack.Screen 
-          name="AIAssistant" 
-          component={AIAssistantScreen}
+        <Stack.Screen
+          name="AIAssistant"
+          component={SimpleChatScreen}
           options={{
             headerShown: false, // Screen handles its own header
             presentation: 'modal',
