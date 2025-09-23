@@ -99,7 +99,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     onSuccess: (message) => {
       setSuccessMessage(message);
       setSuccessVisible(true);
-      
+
       // Navigate back after showing success message
       setTimeout(() => {
         setSuccessVisible(false);
@@ -110,6 +110,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
       Alert.alert('Error', message);
     }
   });
+
 
   // Load categories on mount
   // Watch for new alerts after expense submission
@@ -280,7 +281,9 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Material Design Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
-        <Text style={[styles.headerText, { color: theme.colors.onPrimary }]}>Add Expense</Text>
+        <Text style={[styles.headerText, { color: theme.colors.onPrimary }]}>
+          Add Expense
+        </Text>
         <Text style={[styles.headerSubtitle, { color: theme.colors.onPrimary }]}>Track your spending</Text>
       </View>
 

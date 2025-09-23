@@ -34,7 +34,9 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
   };
 
   const formatDate = (date: Date): string => {
-    return date.toLocaleDateString('en-US', {
+    // Ensure we have a valid date
+    const validDate = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
+    return validDate.toLocaleDateString('en-US', {
       weekday: 'short',
       year: 'numeric',
       month: 'short',
@@ -43,12 +45,14 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
   };
 
   const getDisplayDate = (): string => {
+    // Ensure value is a valid date
+    const dateToUse = value instanceof Date && !isNaN(value.getTime()) ? value : new Date();
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
     // Compare dates without time
-    const valueDate = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    const valueDate = new Date(dateToUse.getFullYear(), dateToUse.getMonth(), dateToUse.getDate());
     const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const yesterdayDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
     
@@ -57,7 +61,7 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
     } else if (valueDate.getTime() === yesterdayDate.getTime()) {
       return 'Yesterday';
     } else {
-      return formatDate(value);
+      return formatDate(dateToUse);
     }
   };
 
@@ -108,7 +112,7 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
       {showPicker && (
         <DateTimePicker
           testID="date-picker"
-          value={value}
+          value={value instanceof Date && !isNaN(value.getTime()) ? value : new Date()}
           mode="date"
           display="default"
           onChange={handleDateChange}

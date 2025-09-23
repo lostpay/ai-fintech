@@ -16,26 +16,29 @@ import { emitTransactionChanged } from '../utils/eventEmitter';
 interface UseExpenseFormOptions {
   onSuccess?: (message: string) => void;
   onError?: (message: string) => void;
+  isEditMode?: boolean;
+  transactionId?: number;
 }
 
 interface UseExpenseFormReturn {
   // Form data
   formData: Partial<ExpenseFormData>;
   errors: FormErrors;
-  
+
   // State flags
   loading: boolean;
   isValid: boolean;
-  
+
   // Form methods
   updateField: (field: keyof ExpenseFormData, value: any) => void;
   submitForm: () => Promise<boolean>;
   resetForm: () => void;
   validateForm: () => boolean;
+  setFormData: (data: Partial<ExpenseFormData>) => void;
 }
 
 export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseFormReturn => {
-  const { onSuccess, onError } = options;
+  const { onSuccess, onError, isEditMode = false, transactionId } = options;
   
   // Form state
   const [formData, setFormData] = useState<Partial<ExpenseFormData>>({
@@ -91,6 +94,13 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
   }, [formData]);
 
   /**
+   * Set form data directly (used for edit mode)
+   */
+  const setFormDataDirectly = useCallback((data: Partial<ExpenseFormData>) => {
+    setFormData(data);
+  }, []);
+
+  /**
    * Submit the form
    */
   const submitForm = useCallback(async (): Promise<boolean> => {
@@ -106,7 +116,7 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
       // Ensure database is initialized
       await databaseService.initialize();
 
-      // Create transaction with validated data
+      // Create or update transaction with validated data
       const transactionData = {
         amount: formData.amount!,
         description: formData.description!.trim(),
@@ -115,20 +125,35 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
         date: formData.date!,
       };
 
-      const transaction = await databaseService.createTransaction(transactionData);
-      
+      let transaction;
+      let eventType: 'created' | 'updated';
+      let successMessage: string;
+
+      if (isEditMode && transactionId) {
+        // Update existing transaction
+        transaction = await databaseService.updateTransaction(transactionId, transactionData);
+        eventType = 'updated';
+        successMessage = 'Transaction updated successfully! ✅';
+      } else {
+        // Create new transaction
+        transaction = await databaseService.createTransaction(transactionData);
+        eventType = 'created';
+        successMessage = 'Expense added successfully! 💰';
+      }
+
       // Emit transaction changed event for budget alerts
       emitTransactionChanged({
-        type: 'created',
+        type: eventType,
         transactionId: transaction.id,
         categoryId: transactionData.category_id,
         amount: transactionData.amount
       });
-      
-      // Success - reset form
-      resetForm();
-      
-      const successMessage = 'Expense added successfully! 💰';
+
+      // Success - reset form if not in edit mode
+      if (!isEditMode) {
+        resetForm();
+      }
+
       onSuccess?.(successMessage);
       
       return true;
@@ -145,7 +170,7 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
     } finally {
       setLoading(false);
     }
-  }, [formData, validateForm, onSuccess, onError, databaseService, resetForm]);
+  }, [formData, validateForm, onSuccess, onError, databaseService, resetForm, isEditMode, transactionId]);
 
   return {
     formData,
@@ -156,5 +181,6 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
     submitForm,
     resetForm,
     validateForm,
+    setFormData: setFormDataDirectly,
   };
 };

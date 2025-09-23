@@ -1,21 +1,53 @@
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Text, Icon, ListItem } from 'react-native-elements';
 import { TransactionWithCategory } from '../../types/Transaction';
 import { formatCurrency, formatCurrencyWithSign } from '../../utils/currency';
 import { formatDateWithRelative } from '../../utils/date';
+import { TransactionOptionsModal } from '../modals/TransactionOptionsModal';
+import { databaseService } from '../../services';
 
 interface RecentTransactionsListProps {
   transactions: TransactionWithCategory[];
   loading?: boolean;
   onViewAll?: () => void;
+  onEdit?: (transaction: TransactionWithCategory) => void;
+  onRefresh?: () => void;
 }
 
 export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
   transactions,
   loading = false,
   onViewAll,
+  onEdit,
+  onRefresh,
 }) => {
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+
+  const handleTransactionPress = (transaction: TransactionWithCategory) => {
+    setSelectedTransaction(transaction);
+    setShowOptionsModal(true);
+  };
+
+  const handleEdit = (transaction: TransactionWithCategory) => {
+    if (onEdit) {
+      onEdit(transaction);
+    }
+  };
+
+  const handleDelete = async (transactionId: number) => {
+    try {
+      await databaseService.deleteTransaction(transactionId);
+      Alert.alert('Success', 'Transaction deleted successfully');
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete transaction');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.card}>
@@ -36,11 +68,11 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <Icon 
-            name="receipt" 
-            type="material-icons" 
-            size={48} 
-            color="#E0E0E0" 
+          <Icon
+            name="receipt"
+            type="material-icons"
+            size={48}
+            color="#E0E0E0"
           />
           <Text style={styles.emptyText}>No transactions yet</Text>
           <Text style={styles.emptySubtext}>
@@ -61,17 +93,22 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
           </TouchableOpacity>
         )}
       </View>
-      
+
       <View style={styles.transactionsList}>
         {transactions.map((transaction, index) => (
-          <ListItem
+          <TouchableOpacity
             key={transaction.id}
-            containerStyle={[
-              styles.transactionItem,
-              index === transactions.length - 1 && styles.lastTransactionItem
-            ]}
+            activeOpacity={0.7}
+            onPress={() => handleTransactionPress(transaction)}
           >
-            <View style={[styles.categoryIcon, { backgroundColor: transaction.category_color + '20' }]}>
+            <ListItem
+              containerStyle={[
+                styles.transactionItem,
+                index === transactions.length - 1 && styles.lastTransactionItem
+              ]}
+              Component={View}
+            >
+            <View style={[styles.categoryIcon, { backgroundColor: 'rgba(0,0,0,0.05)' }]}>
               <Icon
                 name={transaction.category_icon || 'category'}
                 type="material-icons"
@@ -79,7 +116,7 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
                 color={transaction.category_color || '#757575'}
               />
             </View>
-            
+
             <ListItem.Content>
               <ListItem.Title style={styles.transactionDescription}>
                 {transaction.description}
@@ -88,18 +125,27 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
                 {transaction.category_name} • {formatDateWithRelative(transaction.date)}
               </ListItem.Subtitle>
             </ListItem.Content>
-            
+
             <Text style={[
               styles.transactionAmount,
-              transaction.transaction_type === 'income' 
-                ? styles.incomeAmount 
+              transaction.transaction_type === 'income'
+                ? styles.incomeAmount
                 : styles.expenseAmount
             ]}>
               {formatCurrencyWithSign(transaction.amount, transaction.transaction_type)}
             </Text>
-          </ListItem>
+            </ListItem>
+          </TouchableOpacity>
         ))}
       </View>
+
+      <TransactionOptionsModal
+        visible={showOptionsModal}
+        transaction={selectedTransaction}
+        onClose={() => setShowOptionsModal(false)}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
     </View>
   );
 };

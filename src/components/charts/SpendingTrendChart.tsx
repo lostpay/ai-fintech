@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { VictoryLine, VictoryChart, VictoryAxis, VictoryTheme, VictoryArea } from 'victory-native';
+import { LineChart } from 'react-native-chart-kit';
 import { SpendingTrend } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -16,7 +16,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
   data,
-  height = 250,
+  height = 220,
   showTrendIndicators = true,
 }) => {
   const theme = useTheme();
@@ -31,15 +31,43 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
     );
   }
 
-  // Prepare data for Victory Native
-  const months = data.map(d => new Date(d.period + '-01').toLocaleDateString('en-US', { month: 'short' }));
-  const chartData = data.map((d, i) => ({
-    x: i + 1,
-    y: d.amount / 100
-  }));
+  // Prepare data for react-native-chart-kit
+  const labels = data.map(d => new Date(d.period + '-01').toLocaleDateString('en-US', { month: 'short' }));
+  const amounts = data.map(d => d.amount / 100);
 
-  const maxValue = Math.max(...chartData.map(d => d.y));
-  const minValue = Math.min(...chartData.map(d => d.y));
+  const chartData = {
+    labels: labels,
+    datasets: [
+      {
+        data: amounts,
+        color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`, // Blue
+        strokeWidth: 2,
+      },
+    ],
+  };
+
+  const chartConfig = {
+    backgroundColor: '#ffffff',
+    backgroundGradientFrom: '#ffffff',
+    backgroundGradientTo: '#ffffff',
+    decimalPlaces: 0,
+    color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+    style: {
+      borderRadius: 16,
+    },
+    propsForDots: {
+      r: '4',
+      strokeWidth: '2',
+      stroke: '#2196F3',
+    },
+    propsForBackgroundLines: {
+      strokeDasharray: '', // solid background lines
+    },
+  };
+
+  const maxValue = Math.max(...amounts);
+  const minValue = Math.min(...amounts);
 
   const getTrendIcon = (direction: SpendingTrend['trend_direction']) => {
     switch (direction) {
@@ -65,41 +93,28 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
 
   return (
     <View style={styles.container}>
-      <VictoryChart
+      <Text variant="titleMedium" style={styles.chartTitle}>
+        Spending Trends
+      </Text>
+
+      <LineChart
+        data={chartData}
         width={screenWidth - 32}
         height={height}
-        theme={VictoryTheme.material}
-        padding={{ left: 70, top: 20, right: 40, bottom: 60 }}
-      >
-        <VictoryAxis
-          dependentAxis
-          tickFormat={(y) => `$${y}`}
-          style={{
-            tickLabels: { fontSize: 12, padding: 5 },
-            grid: { stroke: "#e0e0e0" }
-          }}
-        />
-        <VictoryAxis
-          tickFormat={(x) => months[x - 1] || ''}
-          style={{
-            tickLabels: { fontSize: 12, padding: 5, angle: -45 }
-          }}
-        />
-        <VictoryArea
-          data={chartData}
-          x="x"
-          y="y"
-          style={{
-            data: {
-              fill: "#2196F3",
-              fillOpacity: 0.3,
-              stroke: "#2196F3",
-              strokeWidth: 2
-            }
-          }}
-          interpolation="monotoneX"
-        />
-      </VictoryChart>
+        yAxisLabel="$"
+        yAxisSuffix=""
+        yAxisInterval={1}
+        chartConfig={chartConfig}
+        bezier
+        style={styles.chart}
+        withInnerLines={true}
+        withOuterLines={true}
+        withVerticalLines={false}
+        withHorizontalLines={true}
+        withDots={true}
+        withShadow={false}
+        getDotColor={() => '#2196F3'}
+      />
 
       {showTrendIndicators && (
         <View style={styles.trendIndicators}>
@@ -133,7 +148,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
         <View style={styles.statItem}>
           <Text variant="bodySmall" style={styles.statLabel}>Average</Text>
           <Text variant="bodyMedium" style={styles.statValue}>
-            {formatCurrency(chartData.reduce((sum, item) => sum + item.y, 0) / chartData.length * 100)}
+            {formatCurrency(amounts.reduce((sum, item) => sum + item, 0) / amounts.length * 100)}
           </Text>
         </View>
         <View style={styles.statItem}>
@@ -172,6 +187,15 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
+  },
+  chartTitle: {
+    textAlign: 'center',
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
   trendIndicators: {
     marginTop: 16,

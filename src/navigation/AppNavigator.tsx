@@ -8,14 +8,15 @@ import { Platform, BackHandler } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 
 // Import screen components
-import { 
-  HomeScreen, 
-  AddExpenseScreen, 
+import {
+  HomeScreen,
+  AddExpenseScreen,
   BudgetScreen,
-  HistoryScreen, 
+  HistoryScreen,
   SettingsScreen,
   CategoriesScreen,
-  BudgetAnalyticsScreen
+  BudgetAnalyticsScreen,
+  EditTransactionScreen
 } from '../screens';
 import { CategoryFormScreen } from '../screens/CategoryFormScreen';
 import AIAssistantScreen from '../screens/AIAssistantScreen';
@@ -237,12 +238,20 @@ export const AppNavigator: React.FC = () => {
             },
           }}
         />
-        <Stack.Screen 
-          name="BudgetAnalytics" 
+        <Stack.Screen
+          name="BudgetAnalytics"
           component={BudgetAnalyticsScreen}
           options={{
             headerShown: false, // Screen handles its own header
             presentation: 'card',
+          }}
+        />
+        <Stack.Screen
+          name="EditTransaction"
+          component={EditTransactionScreen}
+          options={{
+            headerShown: false,
+            presentation: 'modal',
           }}
         />
         <Stack.Screen

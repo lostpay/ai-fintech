@@ -170,7 +170,7 @@ export const CategoryPerformance: React.FC<CategoryPerformanceProps> = ({ catego
                           styles.statusChip,
                           { 
                             borderColor: getPerformanceColor(category),
-                            backgroundColor: getPerformanceColor(category) + '20'
+                            backgroundColor: 'rgba(0,0,0,0.05)'
                           }
                         ]}
                         textStyle={{ 

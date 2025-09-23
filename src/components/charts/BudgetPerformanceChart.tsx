@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { VictoryBar, VictoryChart, VictoryAxis, VictoryTheme, VictoryStack } from 'victory-native';
+import { BarChart } from 'react-native-chart-kit';
 import { MonthlyBudgetPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 
@@ -15,7 +15,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
   data,
-  height = 250,
+  height = 220,
   showDetails = true,
 }) => {
   const theme = useTheme();
@@ -30,70 +30,73 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
     );
   }
 
-  // Prepare data for Victory Native
-  const months = data.map(d => new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }));
-  const budgetedData = data.map((d, i) => ({
-    x: i + 1,
-    y: d.total_budgeted / 100
-  }));
-  const spentData = data.map((d, i) => ({
-    x: i + 1,
-    y: d.total_spent / 100
-  }));
+  // Prepare data for react-native-chart-kit
+  const labels = data.map(d => new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }));
+  const budgetedData = data.map(d => d.total_budgeted / 100);
+  const spentData = data.map(d => d.total_spent / 100);
 
-  const maxValue = Math.max(
-    ...data.map(d => Math.max(d.total_budgeted / 100, d.total_spent / 100))
-  );
+  const chartData = {
+    labels: labels,
+    datasets: [
+      {
+        data: budgetedData,
+        color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`, // Green
+      },
+      {
+        data: spentData,
+        color: (opacity = 1) => `rgba(255, 87, 34, ${opacity})`, // Orange
+      },
+    ],
+    legend: ['Budgeted', 'Actual'],
+  };
+
+  const chartConfig = {
+    backgroundColor: '#ffffff',
+    backgroundGradientFrom: '#ffffff',
+    backgroundGradientTo: '#ffffff',
+    decimalPlaces: 0,
+    color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+    style: {
+      borderRadius: 16,
+    },
+    propsForDots: {
+      r: '6',
+      strokeWidth: '2',
+      stroke: '#ffa726',
+    },
+  };
 
   return (
     <View style={styles.container}>
-      <VictoryChart
+      <Text variant="titleMedium" style={styles.chartTitle}>
+        Budget vs Actual Spending
+      </Text>
+
+      <BarChart
+        data={chartData}
         width={screenWidth - 32}
         height={height}
-        theme={VictoryTheme.material}
-        padding={{ left: 70, top: 20, right: 40, bottom: 60 }}
-        domainPadding={{ x: 25 }}
-      >
-        <VictoryAxis
-          dependentAxis
-          tickFormat={(y) => `$${y}`}
-          style={{
-            tickLabels: { fontSize: 12, padding: 5 },
-            grid: { stroke: "#e0e0e0" }
-          }}
-        />
-        <VictoryAxis
-          tickFormat={(x) => months[x - 1] || ''}
-          style={{
-            tickLabels: { fontSize: 12, padding: 5, angle: -45 }
-          }}
-        />
-        <VictoryBar
-          data={budgetedData}
-          x="x"
-          y="y"
-          style={{
-            data: { fill: "#4CAF50", width: 15 }
-          }}
-        />
-        <VictoryBar
-          data={spentData}
-          x="x"
-          y="y"
-          style={{
-            data: { fill: "#FF5722", width: 15 }
-          }}
-        />
-      </VictoryChart>
+        yAxisLabel="$"
+        yAxisSuffix=""
+        yAxisInterval={1}
+        chartConfig={chartConfig}
+        verticalLabelRotation={0}
+        showValuesOnTopOfBars={false}
+        fromZero={true}
+        withInnerLines={true}
+        withHorizontalLabels={true}
+        style={styles.chart}
+      />
 
       {showDetails && (
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendColor, { backgroundColor: '#4CAF50' }]} />
+            <View style={[styles.legendColor, { backgroundColor: 'rgba(76, 175, 80, 1)' }]} />
             <Text variant="bodySmall">Budgeted</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendColor, { backgroundColor: '#FF5722' }]} />
+            <View style={[styles.legendColor, { backgroundColor: 'rgba(255, 87, 34, 1)' }]} />
             <Text variant="bodySmall">Actual</Text>
           </View>
         </View>
@@ -104,7 +107,7 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
           {data.map((item, index) => (
             <View key={index} style={styles.indicatorItem}>
               <Text variant="bodySmall" style={styles.indicatorMonth}>
-                {months[index]}
+                {labels[index]}
               </Text>
               <Text
                 variant="bodySmall"
@@ -136,6 +139,15 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
+  },
+  chartTitle: {
+    textAlign: 'center',
+    marginBottom: 16,
+    fontWeight: '600',
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
   legend: {
     flexDirection: 'row',

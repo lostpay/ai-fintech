@@ -45,6 +45,13 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('History');
   };
 
+  const handleEditTransaction = (transaction: any) => {
+    // @ts-ignore - Navigate to edit screen with transaction data
+    navigation.navigate('EditTransaction', {
+      transaction: transaction
+    });
+  };
+
   // Show loading state while data is being fetched
   if (loading && !dashboardData) {
     return <LoadingState message="Loading your dashboard..." />;
@@ -134,6 +141,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           transactions={dashboardData.recentTransactions}
           loading={loading}
           onViewAll={handleViewAllTransactions}
+          onEdit={handleEditTransaction}
+          onRefresh={refreshDashboard}
         />
       </ScrollView>
 

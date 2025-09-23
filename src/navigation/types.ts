@@ -16,12 +16,15 @@ export type RootTabParamList = {
 export type RootStackParamList = {
   Main: undefined;
   Categories: undefined;
-  CategoryForm: { 
-    mode: 'create' | 'edit'; 
-    category?: Category 
+  CategoryForm: {
+    mode: 'create' | 'edit';
+    category?: Category
   };
   BudgetAnalytics: undefined;
   AIAssistant: undefined;
+  EditTransaction: {
+    transaction: any;
+  };
 };
 
 // Helper type for screens props

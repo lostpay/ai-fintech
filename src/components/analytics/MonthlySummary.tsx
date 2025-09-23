@@ -124,7 +124,7 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ performance }) =
                 styles.ratingChip,
                 { 
                   borderColor: getRatingColor(),
-                  backgroundColor: getRatingColor() + '20'
+                  backgroundColor: 'rgba(0,0,0,0.05)'
                 }
               ]}
               textStyle={{ color: getRatingColor() }}

@@ -25,7 +25,6 @@ export const EmptyTransactionHistory: React.FC = () => {
       navigation.navigate('add-expense');
     } catch (error) {
       console.warn('Navigation error:', error);
-      // Fallback - you could also use router.push if using Expo Router
     }
   };
 

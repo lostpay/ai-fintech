@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, SafeAreaView, SectionList, RefreshControl } from 'react-native';
+import { View, StyleSheet, SafeAreaView, SectionList, RefreshControl, Alert } from 'react-native';
 import { Surface } from 'react-native-paper';
 import { TransactionCard } from '../components/lists/TransactionCard';
 import { StickyDateHeader } from '../components/lists/StickyDateHeader';
@@ -13,6 +13,7 @@ import { useCategories } from '../hooks/useCategories';
 import { groupTransactionsByDate, TransactionGroup } from '../utils/dateFormatting';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
+import { TransactionOptionsModal } from '../components/modals/TransactionOptionsModal';
 
 export const HistoryScreen: React.FC = () => {
   const navigation = useNavigation();
@@ -24,6 +25,8 @@ export const HistoryScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -54,9 +57,27 @@ export const HistoryScreen: React.FC = () => {
   }, [loadTransactions]);
 
   const handleTransactionPress = useCallback((transaction: TransactionWithCategory) => {
-    // TODO: Navigate to transaction details screen in future story
-    console.log('Transaction pressed:', transaction.id);
+    setSelectedTransaction(transaction);
+    setShowOptionsModal(true);
   }, []);
+
+  const handleEditTransaction = useCallback((transaction: TransactionWithCategory) => {
+    // @ts-ignore - Navigate to edit screen with transaction data
+    navigation.navigate('EditTransaction', {
+      transaction: transaction
+    });
+    setShowOptionsModal(false);
+  }, [navigation]);
+
+  const handleDeleteTransaction = useCallback(async (transactionId: number) => {
+    try {
+      await databaseService.deleteTransaction(transactionId);
+      Alert.alert('Success', 'Transaction deleted successfully');
+      loadTransactions();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete transaction');
+    }
+  }, [loadTransactions]);
 
   const handleSearchChange = useCallback((term: string) => {
     setSearchTerm(term);
@@ -167,6 +188,14 @@ export const HistoryScreen: React.FC = () => {
           />
         )}
       </Surface>
+
+      <TransactionOptionsModal
+        visible={showOptionsModal}
+        transaction={selectedTransaction}
+        onClose={() => setShowOptionsModal(false)}
+        onEdit={handleEditTransaction}
+        onDelete={handleDeleteTransaction}
+      />
     </SafeAreaView>
   );
 };

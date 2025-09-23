@@ -141,7 +141,7 @@ export const SuccessMetrics: React.FC<SuccessMetricsProps> = ({ metrics }) => {
                 styles.trendChip,
                 { 
                   borderColor: getTrendColor(metrics.improvement_trend),
-                  backgroundColor: getTrendColor(metrics.improvement_trend) + '20'
+                  backgroundColor: 'rgba(0,0,0,0.05)'
                 }
               ]}
               textStyle={{ color: getTrendColor(metrics.improvement_trend) }}

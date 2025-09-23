@@ -130,7 +130,7 @@ export const BudgetAlert: React.FC<BudgetAlertProps> = ({
                       styles.iconContainer,
                       { 
                         transform: [{ scale: scaleAnim }],
-                        backgroundColor: getAlertColor(alert.severity) + '20'
+                        backgroundColor: 'rgba(0,0,0,0.05)'
                       }
                     ]}
                   >

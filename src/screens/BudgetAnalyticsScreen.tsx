@@ -191,7 +191,9 @@ export const BudgetAnalyticsScreen: React.FC = () => {
               📈 Budget vs Actual Spending
             </Text>
             <Card style={styles.chartCard}>
-              <BudgetPerformanceChart data={monthlyPerformance} height={220} />
+              <Card.Content>
+                <BudgetPerformanceChart data={monthlyPerformance} height={250} />
+              </Card.Content>
             </Card>
           </View>
         )}
@@ -213,11 +215,13 @@ export const BudgetAnalyticsScreen: React.FC = () => {
               🎯 Category Breakdown
             </Text>
             <Card style={styles.chartCard}>
-              <CategoryBreakdownChart 
-                data={categoryPerformance} 
-                height={250}
-                showLegend={true}
-              />
+              <Card.Content>
+                <CategoryBreakdownChart
+                  data={categoryPerformance}
+                  height={250}
+                  showLegend={true}
+                />
+              </Card.Content>
             </Card>
           </View>
         )}
@@ -239,11 +243,13 @@ export const BudgetAnalyticsScreen: React.FC = () => {
               📉 Spending Trends
             </Text>
             <Card style={styles.chartCard}>
-              <SpendingTrendChart 
-                data={spendingTrends} 
-                height={220}
-                showTrendIndicators={true}
-              />
+              <Card.Content>
+                <SpendingTrendChart
+                  data={spendingTrends}
+                  height={250}
+                  showTrendIndicators={true}
+                />
+              </Card.Content>
             </Card>
           </View>
         )}

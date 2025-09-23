@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, ScrollView } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { VictoryPie, VictoryLabel, VictoryContainer } from 'victory-native';
+import { PieChart } from 'react-native-chart-kit';
 import { CategoryPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -17,7 +17,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   data,
-  height = 250,
+  height = 220,
   showLabels = true,
   showLegend = true,
 }) => {
@@ -33,19 +33,29 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
     );
   }
 
-  // Prepare data for pie chart
-  const pieData = data.map((category) => ({
-    x: category.category_name,
-    y: category.spent_amount / 100
-  }));
-
   const totalSpent = data.reduce((sum, item) => sum + (item.spent_amount / 100), 0);
 
-  // Default colors if category colors are not available
+  // Prepare data for pie chart with distinct colors
   const colors = [
     '#4CAF50', '#2196F3', '#FF5722', '#FFC107',
     '#9C27B0', '#00BCD4', '#795548', '#607D8B'
   ];
+
+  const pieData = data.map((category, index) => ({
+    name: category.category_name,
+    amount: category.spent_amount / 100,
+    color: colors[index % colors.length],
+    legendFontColor: '#7F7F7F',
+    legendFontSize: 12
+  }));
+
+  const chartConfig = {
+    backgroundColor: '#ffffff',
+    backgroundGradientFrom: '#ffffff',
+    backgroundGradientTo: '#ffffff',
+    color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+    labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+  };
 
   const getStatusIcon = (status: CategoryPerformance['status']) => {
     switch (status) {
@@ -74,7 +84,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.totalSummary}>
         <Text variant="bodySmall" style={styles.centerLabel}>Total Spent</Text>
         <Text variant="headlineSmall" style={styles.centerValue}>
@@ -82,24 +92,21 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
         </Text>
       </View>
 
-      <View style={styles.chartSection}>
-        <VictoryPie
-          data={pieData}
-          width={screenWidth - 32}
-          height={height}
-          innerRadius={60}
-          labelRadius={90}
-          colorScale={colors}
-          labelComponent={
-            <VictoryLabel
-              style={{
-                fontSize: 10,
-                fill: "#333333"
-              }}
-            />
-          }
-        />
-      </View>
+      <Text variant="titleMedium" style={styles.chartTitle}>
+        Spending by Category
+      </Text>
+
+      <PieChart
+        data={pieData}
+        width={screenWidth - 32}
+        height={height}
+        chartConfig={chartConfig}
+        accessor="amount"
+        backgroundColor="transparent"
+        paddingLeft="15"
+        absolute={false}
+        hasLegend={false}
+      />
 
       {showLegend && (
         <View style={styles.legendContainer}>
@@ -176,7 +183,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
           </View>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -208,8 +215,10 @@ const styles = StyleSheet.create({
   centerValue: {
     fontWeight: '700',
   },
-  chartSection: {
-    alignItems: 'center',
+  chartTitle: {
+    textAlign: 'center',
+    marginBottom: 16,
+    fontWeight: '600',
   },
   legendContainer: {
     width: '100%',
