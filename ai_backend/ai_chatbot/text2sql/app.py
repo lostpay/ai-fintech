@@ -140,7 +140,7 @@ def process_query_with_supabase(query: str, user_id: str, lang: str = "zh") -> D
         for budget in budgets:
             budget_data.append({
                 "category": budget.category_name,
-                "limit": budget.amount / 100.0,  # Convert cents to dollars
+                "limit": budget.amount,  # NT$ values
                 "spent": budget.spent_amount,
                 "remaining": budget.remaining_amount,
                 "percentage_used": budget.percentage_used,
@@ -160,7 +160,7 @@ def process_query_with_supabase(query: str, user_id: str, lang: str = "zh") -> D
         for txn in transactions:
             transaction_data.append({
                 "date": txn.date.strftime('%Y-%m-%d'),
-                "amount": txn.amount / 100.0,  # Convert cents to dollars
+                "amount": txn.amount,  # NT$ values
                 "category": txn.category_name,
                 "description": txn.description,
                 "type": txn.transaction_type
@@ -209,7 +209,7 @@ def process_query_with_supabase(query: str, user_id: str, lang: str = "zh") -> D
                 cat_name = txn.category_name
                 if cat_name not in category_summary:
                     category_summary[cat_name] = {"amount": 0, "count": 0}
-                category_summary[cat_name]["amount"] += txn.amount / 100.0
+                category_summary[cat_name]["amount"] += txn.amount
                 category_summary[cat_name]["count"] += 1
 
         return {
@@ -226,7 +226,7 @@ def process_query_with_supabase(query: str, user_id: str, lang: str = "zh") -> D
         for txn in transactions:
             transaction_data.append({
                 "date": txn.date.strftime('%Y-%m-%d'),
-                "amount": txn.amount / 100.0,
+                "amount": txn.amount,
                 "category": txn.category_name,
                 "description": txn.description,
                 "type": txn.transaction_type
@@ -353,7 +353,7 @@ async def test_user_data(user_id: str):
             "recent_transactions": [
                 {
                     "date": txn.date.strftime('%Y-%m-%d'),
-                    "amount": txn.amount / 100.0,
+                    "amount": txn.amount,
                     "category": txn.category_name,
                     "description": txn.description
                 }

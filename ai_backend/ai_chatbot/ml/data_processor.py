@@ -44,7 +44,11 @@ class DataProcessor:
             # Add temporal features
             daily_df = self._add_temporal_features(daily_df)
 
-            # Add lag features
+            # Add week number for weekly pattern detection
+            daily_df['week_number'] = daily_df['date'].dt.isocalendar().week
+            daily_df['is_end_of_month'] = (daily_df['date'].dt.day > 25).astype(int)
+
+            # Add lag features with extensive lags like notebook
             daily_df = self._add_lag_features(daily_df)
 
             # Add rolling features
@@ -129,16 +133,24 @@ class DataProcessor:
 
         return df
 
-    def _add_lag_features(self, df: pd.DataFrame, lags: List[int] = [1, 2, 3, 7]) -> pd.DataFrame:
+    def _add_lag_features(self, df: pd.DataFrame, lags: List[int] = None) -> pd.DataFrame:
         """
-        Add lagged features for time series prediction
+        Add lagged features for time series prediction (matching notebook)
         """
+        # Use notebook-style extensive lags for better predictions
+        if lags is None:
+            # Primary lags for immediate patterns
+            primary_lags = [1, 2, 3, 7, 14]
+            # Extended lags for monthly patterns
+            extended_lags = list(range(1, 31))  # Full 30-day lag as in notebook
+            lags = sorted(list(set(primary_lags + extended_lags)))
+
         for lag in lags:
             # Lag total spending
             df[f'total_lag_{lag}'] = df['total_daily'].shift(lag)
 
-            # Lag key categories
-            for category in ['Food', 'Transport', 'Shopping']:
+            # Lag key categories with comprehensive coverage
+            for category in self.categories:
                 if category in df.columns:
                     df[f'{category}_lag_{lag}'] = df[category].shift(lag)
 
@@ -146,15 +158,20 @@ class DataProcessor:
 
     def _add_rolling_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Add rolling window features
+        Add rolling window features (matching notebook's 7day_avg pattern)
         """
+        # Core windows from notebook
         windows = [3, 7, 14, 30]
 
         for window in windows:
-            # Rolling mean
+            # Rolling mean (notebook uses this heavily)
             df[f'total_rolling_mean_{window}'] = (
                 df['total_daily'].rolling(window=window, min_periods=1).mean()
             )
+
+            # Special case: notebook's "7day_avg" feature
+            if window == 7:
+                df['Total_7day_avg'] = df[f'total_rolling_mean_{window}']  # Match notebook naming
 
             # Rolling std (volatility)
             df[f'total_rolling_std_{window}'] = (
@@ -166,18 +183,20 @@ class DataProcessor:
                 df['total_daily'].rolling(window=window, min_periods=1).max()
             )
 
-        # Category-specific rolling features for important categories
-        for category in ['Food', 'Transport']:
+        # Category-specific rolling features for ALL categories (not just Food/Transport)
+        for category in self.categories:
             if category in df.columns:
-                df[f'{category}_rolling_mean_7'] = (
+                # 7-day average is key in notebook
+                df[f'{category}_7day_avg'] = (
                     df[category].rolling(window=7, min_periods=1).mean()
                 )
+                df[f'{category}_rolling_mean_7'] = df[f'{category}_7day_avg']  # Alias
 
         return df
 
     def _add_behavioral_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Add behavioral pattern features
+        Add behavioral pattern features (matching notebook patterns)
         """
         # Days since last large expense (>2x daily average)
         avg_daily = df['total_daily'].mean()
@@ -208,6 +227,96 @@ class DataProcessor:
         rolling_mean = df['total_daily'].rolling(window=7, min_periods=1).mean()
         rolling_std = df['total_daily'].rolling(window=7, min_periods=2).std()
         df['spending_consistency'] = rolling_std / (rolling_mean + 1e-6)
+
+        # Add recurrence pattern features from notebook
+        df = self._add_recurrence_features(df)
+
+        # Add spike memory features (3-day window from notebook)
+        df = self._add_spike_memory_features(df)
+
+        # Add activity level features
+        df = self._add_activity_features(df)
+
+        return df
+
+    def _add_recurrence_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add recurrence pattern detection (6-8, 13-15, 28-31 days)
+        """
+        target_categories = ['Shopping', 'Beauty', 'Home']  # Most unpredictable from notebook
+
+        for cat in target_categories:
+            if cat not in df.columns:
+                continue
+
+            days_since_last = []
+            last_spend_idx = None
+
+            for idx in df.index:
+                if df.loc[idx, cat] > 0:
+                    if last_spend_idx is not None:
+                        days_gap = idx - last_spend_idx
+                        days_since_last.append(days_gap)
+                    else:
+                        days_since_last.append(np.nan)
+                    last_spend_idx = idx
+                else:
+                    if last_spend_idx is None:
+                        days_since_last.append(np.nan)
+                    else:
+                        days_since_last.append(idx - last_spend_idx)
+
+            df[f'{cat}_since_last'] = days_since_last
+
+            # Detect recurrence patterns (weekly: 6-8, bi-weekly: 13-15)
+            df[f'{cat}_recurrence'] = df[f'{cat}_since_last'].apply(
+                lambda x: 1 if x in [6, 7, 8, 13, 14, 15] else 0 if not pd.isna(x) else 0
+            )
+
+        return df
+
+    def _add_spike_memory_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add spike memory features (3-day sum detection)
+        """
+        spike_thresholds = {
+            'Shopping': 100,  # NT$100 threshold for spike detection
+            'Beauty': 100,
+            'Home': 100
+        }
+
+        for cat, threshold in spike_thresholds.items():
+            if cat not in df.columns:
+                continue
+
+            # 3-day rolling sum
+            df[f'{cat}_3day_sum'] = df[cat].rolling(window=3, min_periods=1).sum()
+
+            # Spike memory flag
+            df[f'{cat}_spike_memory'] = (df[f'{cat}_3day_sum'] > threshold).astype(int)
+
+        return df
+
+    def _add_activity_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add activity level features based on spending frequency
+        """
+        # Calculate activity rate for each category over last 30 days
+        for cat in self.categories:
+            if cat not in df.columns:
+                continue
+
+            # Rolling activity rate (% of days with spending)
+            df[f'{cat}_activity_rate'] = (
+                (df[cat] > 0).rolling(window=30, min_periods=1).mean()
+            )
+
+            # Activity classification
+            df[f'{cat}_activity_level'] = pd.cut(
+                df[f'{cat}_activity_rate'],
+                bins=[0, 0.1, 0.3, 1.0],
+                labels=['inactive', 'occasional', 'regular']
+            )
 
         return df
 

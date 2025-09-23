@@ -23,6 +23,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from supabase_service import SupabaseService
 from ml.predictor import SpendingPredictor
 from ml.budget_generator import BudgetGenerator
+from ml.budget_generator_advanced import AdvancedBudgetGenerator
 from ml.pattern_detector import PatternDetector
 from ml.data_processor import DataProcessor
 
@@ -49,7 +50,8 @@ app.add_middleware(
 supabase = SupabaseService()
 data_processor = DataProcessor()
 predictor = SpendingPredictor()
-budget_generator = BudgetGenerator()
+budget_generator = BudgetGenerator()  # Keep old one for compatibility
+advanced_budget_generator = AdvancedBudgetGenerator()  # New notebook-based generator
 pattern_detector = PatternDetector()
 
 # Cache for predictions (15 minutes TTL)
@@ -70,6 +72,10 @@ class PatternRequest(BaseModel):
     user_id: str
     lookback_days: int = 90
 
+class OverspendingRequest(BaseModel):
+    user_id: str
+    budget_total: Optional[float] = None
+
 class PredictionResponse(BaseModel):
     predictions: List[Dict[str, Any]]
     confidence: float
@@ -89,6 +95,13 @@ class PatternResponse(BaseModel):
     volatility: Dict[str, float]
     activity_levels: Dict[str, str]
     insights: List[str]
+
+class OverspendingResponse(BaseModel):
+    overspending: bool
+    message: str
+    predicted_amount: float
+    budget_amount: float
+    confidence: float
 
 def get_cache_key(user_id: str, operation: str, params: str = "") -> str:
     """Generate cache key"""
@@ -129,10 +142,25 @@ async def predict_spending(request: PredictionRequest):
             days_back=120  # Get 4 months of data for training
         )
 
-        if not transactions or len(transactions) < 30:
+        if not transactions:
             raise HTTPException(
                 status_code=400,
-                detail="Insufficient transaction history for predictions (need at least 30 days)"
+                detail="No transaction history found for predictions"
+            )
+
+        # Check data requirements based on timeframe
+        if request.timeframe == "monthly" and len(transactions) < 30:
+            return PredictionResponse(
+                predictions=[],
+                confidence=0.3,
+                drivers=[],
+                timeframe=request.timeframe,
+                generated_at=datetime.now().isoformat()
+            )
+        elif len(transactions) < 14:
+            raise HTTPException(
+                status_code=400,
+                detail="Insufficient transaction history for predictions (need at least 14 days)"
             )
 
         # Process data
@@ -214,10 +242,11 @@ async def recommend_budget(request: BudgetRequest):
         )
 
         if not transactions:
-            # Return default budget for new users
+            # Return default budget for new users using advanced generator
+            default_budget = advanced_budget_generator._get_default_monthly_budget()
             return BudgetResponse(
-                categories=budget_generator.get_default_budgets(),
-                total_budget=0,
+                categories=default_budget['categories'],
+                total_budget=default_budget['total'],
                 period=target_date.strftime("%Y-%m"),
                 methodology={"type": "default", "reason": "new_user"}
             )
@@ -229,18 +258,26 @@ async def recommend_budget(request: BudgetRequest):
         # Detect patterns for budget adjustment
         patterns = pattern_detector.detect_patterns(processed_data)
 
-        # Generate budget recommendations
-        budget_data = budget_generator.generate_budget(
-            processed_data,
-            patterns,
-            target_month=target_date
-        )
+        # Generate budget recommendations using advanced generator
+        # Determine if weekly or monthly budget
+        if target_date.day == 1:  # Start of month - generate monthly
+            budget_data = advanced_budget_generator.generate_monthly_budget(processed_data)
+        else:  # Generate weekly by default
+            budget_data = advanced_budget_generator.generate_weekly_budget(processed_data)
+
+        # Ensure compatibility with expected format
+        if 'categories' not in budget_data:
+            budget_data = budget_generator.generate_budget(
+                processed_data,
+                patterns,
+                target_month=target_date
+            )
 
         response = BudgetResponse(
             categories=budget_data['categories'],
-            total_budget=budget_data['total'],
-            period=target_date.strftime("%Y-%m"),
-            methodology=budget_data['methodology']
+            total_budget=budget_data.get('total', sum(c.get('amount', 0) for c in budget_data['categories'])),
+            period=budget_data.get('period', target_date.strftime("%Y-%m")),
+            methodology=budget_data.get('methodology', {})
         )
 
         # Cache the response
@@ -320,6 +357,49 @@ async def analyze_patterns(request: PatternRequest):
 
     except Exception as e:
         logger.error(f"Pattern analysis error for user {request.user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/overspending", response_model=OverspendingResponse)
+async def check_overspending(request: OverspendingRequest):
+    """
+    Check if user is likely to overspend based on predictions and budget
+    """
+    try:
+        # Get user's transaction history
+        transactions = await supabase.get_user_transactions(
+            request.user_id,
+            days_back=90
+        )
+
+        if not transactions or len(transactions) < 14:
+            return OverspendingResponse(
+                overspending=False,
+                message="Need at least 14 days of transaction history for overspending analysis",
+                predicted_amount=0.0,
+                budget_amount=0.0,
+                confidence=0.3
+            )
+
+        # Process data
+        df = pd.DataFrame(transactions)
+        processed_data = data_processor.prepare_features(df)
+
+        # Get budget data if provided
+        budget_data = {'total': request.budget_total} if request.budget_total else None
+
+        # Check overspending
+        result = predictor.check_overspending(processed_data, budget_data)
+
+        return OverspendingResponse(
+            overspending=result['overspending'],
+            message=result['message'],
+            predicted_amount=result.get('predicted_amount', 0.0),
+            budget_amount=result.get('budget_amount', 0.0),
+            confidence=result['confidence']
+        )
+
+    except Exception as e:
+        logger.error(f"Overspending check error for user {request.user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/train")

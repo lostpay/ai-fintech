@@ -167,11 +167,26 @@ class SpendingPredictor:
         # Filter available features
         available_features = [col for col in feature_cols if col in df.columns]
 
+        # Log feature availability
+        missing_features = [col for col in feature_cols if col not in df.columns]
+        if missing_features:
+            logger.warning(f"Missing features: {missing_features[:5]}...")  # Show first 5
+
+        logger.info(f"Using {len(available_features)} features for training")
+
         # Remove rows with NaN in features or target
         clean_df = df[available_features + [target_col]].dropna()
 
+        # Validate data quality
+        if len(clean_df) == 0:
+            raise ValueError("No valid data rows after cleaning")
+
+        # Check for feature variance (avoid constant features)
         X = clean_df[available_features]
         y = clean_df[target_col]
+
+        # Log data shape
+        logger.info(f"Training data shape: {X.shape}, target range: {y.min():.2f} to {y.max():.2f}")
 
         return X, y, available_features
 
@@ -220,6 +235,57 @@ class SpendingPredictor:
             df = pd.concat([df, new_row], ignore_index=True)
 
         return predictions
+
+    def check_overspending(self, df: pd.DataFrame, budget_data: Dict = None) -> Dict:
+        """
+        Check if user is likely to overspend based on predictions and budget
+        """
+        try:
+            # Get weekly prediction
+            predictions, confidence, drivers = self.predict(df, timeframe='weekly', horizon=1)
+
+            if not predictions:
+                return {
+                    'overspending': False,
+                    'message': 'Unable to make prediction with current data.',
+                    'confidence': 0.3
+                }
+
+            predicted_weekly = predictions[0]['predicted_amount']
+
+            # If no budget provided, use simple heuristic
+            if not budget_data or budget_data.get('total', 0) <= 0:
+                # Compare to historical average
+                avg_weekly = df['total_daily'].mean() * 7 if 'total_daily' in df.columns else 0
+                overspending = predicted_weekly > avg_weekly * 1.2  # 20% above average
+
+                return {
+                    'overspending': overspending,
+                    'message': f'Predicted: NT${predicted_weekly:.0f} vs average NT${avg_weekly:.0f}/week',
+                    'predicted_amount': predicted_weekly,
+                    'budget_amount': avg_weekly,
+                    'confidence': confidence
+                }
+            else:
+                # Use actual budget
+                weekly_budget = budget_data.get('total', 0) / 4.3  # Convert monthly to weekly
+                overspending = predicted_weekly > weekly_budget
+
+                return {
+                    'overspending': overspending,
+                    'message': f'Predicted: NT${predicted_weekly:.0f} vs budget NT${weekly_budget:.0f}/week',
+                    'predicted_amount': predicted_weekly,
+                    'budget_amount': weekly_budget,
+                    'confidence': confidence
+                }
+
+        except Exception as e:
+            logger.error(f'Overspending check error: {str(e)}')
+            return {
+                'overspending': False,
+                'message': 'Unable to check overspending at this time.',
+                'confidence': 0.3
+            }
 
     def _predict_weekly(self, df: pd.DataFrame, horizon: int) -> List[Dict]:
         """

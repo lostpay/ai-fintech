@@ -178,10 +178,10 @@ class SupabaseService:
                                  .lte("date", budget.period_end.isoformat())
                                  .execute())
                 
-                spent_amount = sum(t["amount"] for t in spent_response.data) / 100.0  # Convert cents to dollars
+                spent_amount = sum(t["amount"] for t in spent_response.data)  # NT$ values
                 budget.spent_amount = spent_amount
-                budget.remaining_amount = (budget.amount / 100.0) - spent_amount
-                budget.percentage_used = (spent_amount / (budget.amount / 100.0)) * 100 if budget.amount > 0 else 0
+                budget.remaining_amount = budget.amount - spent_amount
+                budget.percentage_used = (spent_amount / budget.amount) * 100 if budget.amount > 0 else 0
                 
                 budgets.append(budget)
             
@@ -278,7 +278,7 @@ class SupabaseService:
             transaction_count = 0
             
             for row in response.data:
-                amount = row["amount"] / 100.0  # Convert cents to dollars
+                amount = row["amount"]  # NT$ values
                 category_name = row["categories"]["name"] if row["categories"] else "Unknown"
                 
                 if row["transaction_type"] == "expense":
@@ -423,7 +423,7 @@ class SupabaseService:
             for row in response.data:
                 transactions.append({
                     'date': row['date'],
-                    'amount': row['amount'] / 100,  # Convert from cents
+                    'amount': row['amount'],  # NT$ values
                     'category': row['categories']['name'] if row.get('categories') else 'Other',
                     'description': row['description'],
                     'type': row['transaction_type']

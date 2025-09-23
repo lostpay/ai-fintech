@@ -16,11 +16,11 @@ class BudgetGenerator:
     """
 
     def __init__(self):
-        # Category spending floors (minimum recommended amounts)
+        # Category spending floors (minimum recommended amounts in NT$)
         self.category_floors = {
-            'Food': 800,
-            'Transport': 200,
-            'Home': 100,
+            'Food': 800,  # NT$800 minimum
+            'Transport': 200,  # NT$200 minimum
+            'Home': 100,  # NT$100 minimum
             'Personal': 50,
             'Bills': 0,  # Bills are fixed
             'Beverage': 100,
@@ -350,7 +350,7 @@ class BudgetGenerator:
 
         # Basic monthly budget allocation
         default_amounts = {
-            'Food': 5000,
+            'Food': 5000,  # NT$5000 monthly
             'Transport': 1500,
             'Home': 1000,
             'Shopping': 2000,

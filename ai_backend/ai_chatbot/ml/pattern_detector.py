@@ -19,11 +19,16 @@ class PatternDetector:
     def __init__(self):
         self.min_data_points = 14  # Minimum days for pattern detection
         self.recurrence_threshold = 0.6  # 60% confidence for recurrence
-        self.spike_threshold = 2.0  # 2x average for spike detection
+        self.spike_threshold = 2.0  # 2 standard deviations for spike detection (Z-score)
+        self.categories = [
+            'Food', 'Beverage', 'Home', 'Shopping', 'Transport',
+            'Entertainment', 'Beauty', 'Sports', 'Personal', 'Work',
+            'Other', 'Bills', 'Travel'
+        ]
 
     def detect_patterns(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Detect all types of spending patterns
+        Detect all types of spending patterns using notebook methods
         """
         try:
             patterns = {
@@ -32,23 +37,24 @@ class PatternDetector:
                 'volatility': {},
                 'activity_levels': {},
                 'trends': {},
-                'seasonality': {}
+                'seasonality': {},
+                'summary': {}
             }
 
             if len(df) < self.min_data_points:
                 logger.warning(f"Insufficient data for pattern detection: {len(df)} days")
                 return patterns
 
-            # Detect recurrence patterns
+            # Detect recurrence patterns (6-8, 13-15, 28-31 day patterns)
             patterns['recurrences'] = self._detect_recurrences(df)
 
-            # Detect spending spikes
+            # Detect spending spikes with Z-score analysis
             patterns['spikes'] = self._detect_spikes(df)
 
-            # Calculate volatility
+            # Calculate volatility (coefficient of variation)
             patterns['volatility'] = self._calculate_volatility(df)
 
-            # Determine activity levels
+            # Determine activity levels (inactive, occasional, regular)
             patterns['activity_levels'] = self._determine_activity_patterns(df)
 
             # Detect trends
@@ -56,6 +62,9 @@ class PatternDetector:
 
             # Detect seasonality
             patterns['seasonality'] = self._detect_seasonality(df)
+
+            # Add summary statistics
+            patterns['summary'] = self._generate_summary(df, patterns)
 
             return patterns
 
@@ -195,7 +204,7 @@ class PatternDetector:
 
     def _detect_spikes(self, df: pd.DataFrame) -> List[Dict]:
         """
-        Detect spending spikes (anomalies)
+        Detect spending spikes (anomalies) using Z-score method from notebook
         """
         spikes = []
 
@@ -478,6 +487,37 @@ class PatternDetector:
         last_date = pd.to_datetime(df['date'].max())
         next_date = last_date + timedelta(days=period)
         return next_date.isoformat()
+
+    def _generate_summary(self, df: pd.DataFrame, patterns: Dict) -> Dict:
+        """
+        Generate summary statistics from detected patterns
+        """
+        summary = {}
+
+        # Overall spending summary
+        if 'total_daily' in df.columns:
+            summary['avg_daily_spend'] = float(df['total_daily'].mean())
+            summary['median_daily_spend'] = float(df['total_daily'].median())
+            summary['max_daily_spend'] = float(df['total_daily'].max())
+            summary['days_analyzed'] = len(df)
+
+        # Pattern counts
+        summary['recurrence_count'] = len(patterns.get('recurrences', []))
+        summary['spike_count'] = len(patterns.get('spikes', []))
+        summary['recent_spikes'] = sum(1 for s in patterns.get('spikes', []) if s.get('recent', False))
+
+        # Activity summary
+        activity_levels = patterns.get('activity_levels', {})
+        summary['active_categories'] = sum(1 for v in activity_levels.values() if v == 'regular')
+        summary['inactive_categories'] = sum(1 for v in activity_levels.values() if v == 'inactive')
+
+        # Volatility summary
+        volatility = patterns.get('volatility', {})
+        if volatility:
+            summary['avg_volatility'] = float(np.mean(list(volatility.values())))
+            summary['high_volatility_categories'] = sum(1 for v in volatility.values() if v > 0.5)
+
+        return summary
 
     def generate_insights(self, patterns: Dict) -> List[str]:
         """

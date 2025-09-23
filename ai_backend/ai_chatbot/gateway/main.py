@@ -228,7 +228,7 @@ TOOLS = [
                 "properties": {
                     "analysis_type": {
                         "type": "string",
-                        "enum": ["predict", "budget", "patterns"],
+                        "enum": ["predict", "budget", "patterns", "overspending"],
                         "description": "Type of ML analysis to perform"
                     },
                     "timeframe": {
@@ -269,14 +269,14 @@ def get_system_prompt(lang: str) -> str:
     if lang == "zh":
         return """你是专业的个人财务助理。
 - 只要用户的问题涉及【金额/上月/本月/分类/趋势/是否超支/合计】→ 必须调用函数 query_expenses。
-- 如果用户询问【预测/预算/未来支出/会不会超支/支出模式/规律】→ 必须调用函数 ml_analysis。
+- 如果用户询问【预测/预报/明天/下週/下周/本月/会不会花/花多少/预算/建议预算/分配/优化/节省/节约/支出模式/规律】→ 必须调用函数 ml_analysis。
 - 如果是使用说明/常见问题 → 调用函数 search_docs。
 - 除非明确是纯解释问题，否则不要直接回答，优先触发工具。
 请用中文回答。"""
     else:
         return """You are a professional personal finance assistant.
 - If the user asks about amounts/month/category/trends/overspending/totals → you MUST call function query_expenses.
-- If the user asks about predictions/budgets/future spending/patterns/will I overspend → you MUST call function ml_analysis.
+- If the user asks about predictions/forecasts/tomorrow/next week/this month/budgets/budget recommendations/allocation/optimization/savings/spending patterns/will I overspend → you MUST call function ml_analysis.
 - For how-to/FAQ → call search_docs.
 - Prefer tools first; don't answer directly unless it's a pure explanation."""
 
@@ -343,6 +343,9 @@ async def call_ml_service(analysis_type: str, user_id: str, timeframe: str = Non
             elif analysis_type == "patterns":
                 payload = {"user_id": user_id, "lookback_days": 90}
                 resp = await client.post(f"{ML_URL}/patterns", json=payload)
+            elif analysis_type == "overspending":
+                payload = {"user_id": user_id}
+                resp = await client.post(f"{ML_URL}/overspending", json=payload)
             else:
                 return {"error": f"Unknown analysis type: {analysis_type}"}
 
