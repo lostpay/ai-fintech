@@ -40,9 +40,13 @@ const MainTabNavigator: React.FC = () => {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.outline,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 100 : 75,
-          paddingBottom: Platform.OS === 'ios' ? 25 : 15,
+          height: Platform.OS === 'ios' ? 100 : 115,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 35,
           paddingTop: 12,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -70,15 +74,15 @@ const MainTabNavigator: React.FC = () => {
         }}
       />
       <Tab.Screen
-        name="Add"
-        component={AddExpenseScreen}
+        name="Chatbot"
+        component={SimpleChatScreen}
         options={{
-          title: 'Add',
+          title: 'AI Chat',
           tabBarIcon: ({ color, size }) => (
-            <MaterialIcons 
-              name="add-circle" 
-              size={size} 
-              color={color} 
+            <MaterialIcons
+              name="chat"
+              size={size}
+              color={color}
             />
           ),
         }}

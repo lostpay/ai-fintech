@@ -174,6 +174,7 @@ export const HistoryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 25, // Increased padding to avoid UI blocking and bring search bar lower
     // backgroundColor will be applied dynamically via theme
   },
   surface: {

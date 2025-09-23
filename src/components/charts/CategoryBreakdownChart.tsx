@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { CartesianChart, Bar } from 'victory-native';
+import { VictoryPie, VictoryLabel, VictoryContainer } from 'victory-native';
 import { CategoryPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -13,10 +13,11 @@ interface CategoryBreakdownChartProps {
   showLegend?: boolean;
 }
 
+const { width: screenWidth } = Dimensions.get('window');
 
 export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   data,
-  height = 200,
+  height = 250,
   showLabels = true,
   showLegend = true,
 }) => {
@@ -32,15 +33,19 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
     );
   }
 
-  // Prepare data for horizontal bar chart
-  const chartData = data.map((category, index) => ({
-    category: category.category_name.length > 8 ? category.category_name.substring(0, 8) + '...' : category.category_name,
-    amount: category.spent_amount / 100, // Convert cents to dollars
-    color: category.category_color,
-    fullCategory: category,
+  // Prepare data for pie chart
+  const pieData = data.map((category) => ({
+    x: category.category_name,
+    y: category.spent_amount / 100
   }));
 
-  const totalSpent = chartData.reduce((sum, item) => sum + item.amount, 0);
+  const totalSpent = data.reduce((sum, item) => sum + (item.spent_amount / 100), 0);
+
+  // Default colors if category colors are not available
+  const colors = [
+    '#4CAF50', '#2196F3', '#FF5722', '#FFC107',
+    '#9C27B0', '#00BCD4', '#795548', '#607D8B'
+  ];
 
   const getStatusIcon = (status: CategoryPerformance['status']) => {
     switch (status) {
@@ -60,21 +65,16 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
       case 'under':
         return '#4CAF50';
       case 'on_track':
-        return theme.colors.primary;
+        return '#2196F3';
       case 'over':
-        return theme.colors.error;
+        return '#FF5722';
       default:
-        return theme.colors.onSurface;
+        return '#757575';
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text variant="titleMedium" style={styles.chartTitle}>
-        Spending by Category
-      </Text>
-
-      {/* Total Spent Summary */}
       <View style={styles.totalSummary}>
         <Text variant="bodySmall" style={styles.centerLabel}>Total Spent</Text>
         <Text variant="headlineSmall" style={styles.centerValue}>
@@ -83,83 +83,73 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
       </View>
 
       <View style={styles.chartSection}>
-        {/* Horizontal Bar Chart */}
-        <CartesianChart
-          data={chartData}
-          xKey="category"
-          yKeys={["amount"]}
-          axisOptions={{
-            font: {
-              size: 10,
-              color: theme.colors.onSurface,
-            },
-            formatYLabel: (value) => formatCurrency(value * 100),
-          }}
-          chartPressState={{}}
-        >
-          {({ points, chartBounds }) => (
-            <Bar
-              points={points.amount}
-              color={theme.colors.primary}
-              barWidth={20}
-              chartBounds={chartBounds}
+        <VictoryPie
+          data={pieData}
+          width={screenWidth - 32}
+          height={height}
+          innerRadius={60}
+          labelRadius={90}
+          colorScale={colors}
+          labelComponent={
+            <VictoryLabel
+              style={{
+                fontSize: 10,
+                fill: "#333333"
+              }}
             />
-          )}
-        </CartesianChart>
-
-        {/* Legend */}
-        {showLegend && (
-          <View style={styles.legendContainer}>
-            {chartData.map((item, index) => {
-              const category = item.fullCategory;
-              const percentage = totalSpent > 0 ? (item.amount / totalSpent) * 100 : 0;
-              return (
-                <View key={index} style={styles.legendItem}>
-                  <View style={styles.legendLeft}>
-                    <View 
-                      style={[
-                        styles.legendColor, 
-                        { backgroundColor: item.color }
-                      ]} 
-                    />
-                    <View style={styles.categoryInfo}>
-                      <View style={styles.categoryHeader}>
-                        <Text variant="bodyMedium" style={styles.categoryName}>
-                          {category.category_name}
-                        </Text>
-                        <MaterialIcons
-                          name={getStatusIcon(category.status) as any}
-                          size={16}
-                          color={getStatusColor(category.status)}
-                        />
-                      </View>
-                      <Text variant="bodySmall" style={styles.categoryDetails}>
-                        {formatCurrency(category.spent_amount)} • {Math.round(percentage)}%
-                      </Text>
-                    </View>
-                  </View>
-                  <Text 
-                    variant="bodySmall" 
-                    style={[
-                      styles.utilizationText,
-                      { color: getStatusColor(category.status) }
-                    ]}
-                  >
-                    {category.utilization_percentage.toFixed(0)}% of budget
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
+          }
+        />
       </View>
 
-      {/* Performance Summary */}
+      {showLegend && (
+        <View style={styles.legendContainer}>
+          {data.map((category, index) => {
+            const percentage = totalSpent > 0 ? (category.spent_amount / 100 / totalSpent) * 100 : 0;
+            return (
+              <View key={index} style={styles.legendItem}>
+                <View style={styles.legendLeft}>
+                  <View
+                    style={[
+                      styles.legendColor,
+                      { backgroundColor: colors[index % colors.length] }
+                    ]}
+                  />
+                  <View style={styles.categoryInfo}>
+                    <View style={styles.categoryHeader}>
+                      <Text variant="bodyMedium" style={styles.categoryName}>
+                        {category.category_name}
+                      </Text>
+                      <MaterialIcons
+                        name={getStatusIcon(category.status) as any}
+                        size={16}
+                        color={getStatusColor(category.status)}
+                      />
+                    </View>
+                    <Text variant="bodySmall" style={styles.categoryDetails}>
+                      {formatCurrency(category.spent_amount)} • {Math.round(percentage)}%
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  variant="bodySmall"
+                  style={[
+                    styles.utilizationText,
+                    { color: getStatusColor(category.status) }
+                  ]}
+                >
+                  {category.utilization_percentage.toFixed(0)}% of budget
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       <View style={styles.performanceSummary}>
         <Text variant="titleSmall" style={styles.summaryTitle}>
           Category Performance
         </Text>
-        
+
         <View style={styles.performanceGrid}>
           <View style={styles.performanceItem}>
             <MaterialIcons name="check-circle" size={20} color="#4CAF50" />
@@ -168,17 +158,17 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
               {data.filter(c => c.status === 'under').length}
             </Text>
           </View>
-          
+
           <View style={styles.performanceItem}>
-            <MaterialIcons name="schedule" size={20} color={theme.colors.primary} />
+            <MaterialIcons name="schedule" size={20} color="#2196F3" />
             <Text variant="bodySmall" style={styles.performanceLabel}>On Track</Text>
             <Text variant="bodyMedium" style={styles.performanceValue}>
               {data.filter(c => c.status === 'on_track').length}
             </Text>
           </View>
-          
+
           <View style={styles.performanceItem}>
-            <MaterialIcons name="error" size={20} color={theme.colors.error} />
+            <MaterialIcons name="error" size={20} color="#FF5722" />
             <Text variant="bodySmall" style={styles.performanceLabel}>Over Budget</Text>
             <Text variant="bodyMedium" style={styles.performanceValue}>
               {data.filter(c => c.status === 'over').length}
@@ -203,11 +193,6 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
-  },
-  chartTitle: {
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '600',
   },
   totalSummary: {
     alignItems: 'center',

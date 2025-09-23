@@ -259,6 +259,9 @@ export class SupabaseService {
       return data.map((item: any) => ({
         id: item.id,
         category_id: item.category_id,
+        category_name: item.categories?.name || 'Unknown',
+        category_icon: item.categories?.icon || 'category',
+        category_color: item.categories?.color || '#757575',
         amount: item.amount / 100, // Convert cents to dollars
         period_start: item.period_start,
         period_end: item.period_end,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { CartesianChart, Line } from 'victory-native';
+import { VictoryLine, VictoryChart, VictoryAxis, VictoryTheme, VictoryArea } from 'victory-native';
 import { SpendingTrend } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -16,7 +16,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
   data,
-  height = 200,
+  height = 250,
   showTrendIndicators = true,
 }) => {
   const theme = useTheme();
@@ -31,16 +31,15 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
     );
   }
 
-  const chartData = data.map((trend, index) => ({
-    month: new Date(trend.period + '-01').toLocaleDateString('en-US', { month: 'short' }),
-    amount: trend.amount / 100, // Convert cents to dollars
-    period: trend.period,
-    trend_direction: trend.trend_direction,
-    change_percentage: trend.change_percentage,
+  // Prepare data for Victory Native
+  const months = data.map(d => new Date(d.period + '-01').toLocaleDateString('en-US', { month: 'short' }));
+  const chartData = data.map((d, i) => ({
+    x: i + 1,
+    y: d.amount / 100
   }));
-  
-  const maxValue = Math.max(...chartData.map(d => d.amount));
-  const minValue = Math.min(...chartData.map(d => d.amount));
+
+  const maxValue = Math.max(...chartData.map(d => d.y));
+  const minValue = Math.min(...chartData.map(d => d.y));
 
   const getTrendIcon = (direction: SpendingTrend['trend_direction']) => {
     switch (direction) {
@@ -56,59 +55,67 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
   const getTrendColor = (direction: SpendingTrend['trend_direction']) => {
     switch (direction) {
       case 'up':
-        return theme.colors.error;
+        return '#FF5722';
       case 'down':
         return '#4CAF50';
       default:
-        return theme.colors.onSurface;
+        return '#757575';
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text variant="titleMedium" style={styles.chartTitle}>
-        Spending Trends
-      </Text>
-      
-      <CartesianChart
-        data={chartData}
-        xKey="month"
-        yKeys={["amount"]}
-        axisOptions={{
-          font: {
-            size: 10,
-            color: theme.colors.onSurface,
-          },
-          formatYLabel: (value) => formatCurrency(value * 100),
-        }}
-        chartPressState={{}}
+      <VictoryChart
+        width={screenWidth - 32}
+        height={height}
+        theme={VictoryTheme.material}
+        padding={{ left: 70, top: 20, right: 40, bottom: 60 }}
       >
-        {({ points, chartBounds }) => (
-          <Line
-            points={points.amount}
-            color={theme.colors.primary}
-            strokeWidth={2}
-            chartBounds={chartBounds}
-          />
-        )}
-      </CartesianChart>
+        <VictoryAxis
+          dependentAxis
+          tickFormat={(y) => `$${y}`}
+          style={{
+            tickLabels: { fontSize: 12, padding: 5 },
+            grid: { stroke: "#e0e0e0" }
+          }}
+        />
+        <VictoryAxis
+          tickFormat={(x) => months[x - 1] || ''}
+          style={{
+            tickLabels: { fontSize: 12, padding: 5, angle: -45 }
+          }}
+        />
+        <VictoryArea
+          data={chartData}
+          x="x"
+          y="y"
+          style={{
+            data: {
+              fill: "#2196F3",
+              fillOpacity: 0.3,
+              stroke: "#2196F3",
+              strokeWidth: 2
+            }
+          }}
+          interpolation="monotoneX"
+        />
+      </VictoryChart>
 
-      {/* Trend indicators */}
       {showTrendIndicators && (
         <View style={styles.trendIndicators}>
           <Text variant="labelMedium" style={styles.trendTitle}>
             Monthly Changes:
           </Text>
           <View style={styles.trendList}>
-            {chartData.slice(1).map((trend, index) => (
+            {data.slice(1).map((trend, index) => (
               <View key={index} style={styles.trendItem}>
                 <MaterialIcons
                   name={getTrendIcon(trend.trend_direction) as any}
                   size={16}
                   color={getTrendColor(trend.trend_direction)}
                 />
-                <Text 
-                  variant="bodySmall" 
+                <Text
+                  variant="bodySmall"
                   style={[
                     styles.trendText,
                     { color: getTrendColor(trend.trend_direction) }
@@ -122,12 +129,11 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
         </View>
       )}
 
-      {/* Summary stats */}
       <View style={styles.summaryStats}>
         <View style={styles.statItem}>
           <Text variant="bodySmall" style={styles.statLabel}>Average</Text>
           <Text variant="bodyMedium" style={styles.statValue}>
-            {formatCurrency(chartData.reduce((sum, item) => sum + item.amount, 0) / chartData.length * 100)}
+            {formatCurrency(chartData.reduce((sum, item) => sum + item.y, 0) / chartData.length * 100)}
           </Text>
         </View>
         <View style={styles.statItem}>
@@ -166,11 +172,6 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
-  },
-  chartTitle: {
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '600',
   },
   trendIndicators: {
     marginTop: 16,

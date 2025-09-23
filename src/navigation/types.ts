@@ -7,7 +7,7 @@ import type { Category } from '../types/Category';
 
 export type RootTabParamList = {
   Home: undefined;
-  Add: undefined;
+  Chatbot: undefined;
   Budget: undefined;
   History: undefined;
   Settings: undefined;

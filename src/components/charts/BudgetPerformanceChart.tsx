@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
-import { CartesianChart, Bar } from 'victory-native';
+import { VictoryBar, VictoryChart, VictoryAxis, VictoryTheme, VictoryStack } from 'victory-native';
 import { MonthlyBudgetPerformance } from '../../types/BudgetAnalytics';
 import { formatCurrency } from '../../utils/currency';
 
@@ -15,7 +15,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
   data,
-  height = 200,
+  height = 250,
   showDetails = true,
 }) => {
   const theme = useTheme();
@@ -30,82 +30,90 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
     );
   }
 
-  const chartData = data.map((month, index) => ({
-    month: new Date(month.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
-    budgeted: month.total_budgeted / 100, // Convert cents to dollars
-    spent: month.total_spent / 100,
-    utilization: month.budget_utilization,
+  // Prepare data for Victory Native
+  const months = data.map(d => new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }));
+  const budgetedData = data.map((d, i) => ({
+    x: i + 1,
+    y: d.total_budgeted / 100
+  }));
+  const spentData = data.map((d, i) => ({
+    x: i + 1,
+    y: d.total_spent / 100
   }));
 
-  const maxValue = Math.max(...chartData.map(d => Math.max(d.budgeted, d.spent)));
-
+  const maxValue = Math.max(
+    ...data.map(d => Math.max(d.total_budgeted / 100, d.total_spent / 100))
+  );
 
   return (
     <View style={styles.container}>
-      <Text variant="titleMedium" style={styles.chartTitle}>
-        Budget vs Actual Spending
-      </Text>
-      
-      <CartesianChart
-        data={chartData}
-        xKey="month"
-        yKeys={["budgeted", "spent"]}
-        axisOptions={{
-          font: {
-            size: 10,
-            color: theme.colors.onSurface,
-          },
-          formatYLabel: (value) => formatCurrency(value * 100),
-        }}
-        chartPressState={{}}
+      <VictoryChart
+        width={screenWidth - 32}
+        height={height}
+        theme={VictoryTheme.material}
+        padding={{ left: 70, top: 20, right: 40, bottom: 60 }}
+        domainPadding={{ x: 25 }}
       >
-        {({ points, chartBounds }) => (
-          <>
-            <Bar
-              points={points.budgeted}
-              color={theme.colors.primary}
-              barWidth={20}
-              chartBounds={chartBounds}
-            />
-            <Bar
-              points={points.spent}
-              color={theme.colors.secondary}
-              barWidth={20}
-              chartBounds={chartBounds}
-            />
-          </>
-        )}
-      </CartesianChart>
-      
+        <VictoryAxis
+          dependentAxis
+          tickFormat={(y) => `$${y}`}
+          style={{
+            tickLabels: { fontSize: 12, padding: 5 },
+            grid: { stroke: "#e0e0e0" }
+          }}
+        />
+        <VictoryAxis
+          tickFormat={(x) => months[x - 1] || ''}
+          style={{
+            tickLabels: { fontSize: 12, padding: 5, angle: -45 }
+          }}
+        />
+        <VictoryBar
+          data={budgetedData}
+          x="x"
+          y="y"
+          style={{
+            data: { fill: "#4CAF50", width: 15 }
+          }}
+        />
+        <VictoryBar
+          data={spentData}
+          x="x"
+          y="y"
+          style={{
+            data: { fill: "#FF5722", width: 15 }
+          }}
+        />
+      </VictoryChart>
+
       {showDetails && (
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendColor, { backgroundColor: theme.colors.primary }]} />
+            <View style={[styles.legendColor, { backgroundColor: '#4CAF50' }]} />
             <Text variant="bodySmall">Budgeted</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendColor, { backgroundColor: theme.colors.secondary }]} />
+            <View style={[styles.legendColor, { backgroundColor: '#FF5722' }]} />
             <Text variant="bodySmall">Actual</Text>
           </View>
         </View>
       )}
 
-      {/* Performance indicators */}
-      {showDetails && chartData.length > 0 && (
+      {showDetails && data.length > 0 && (
         <View style={styles.indicators}>
-          {chartData.map((item, index) => (
+          {data.map((item, index) => (
             <View key={index} style={styles.indicatorItem}>
               <Text variant="bodySmall" style={styles.indicatorMonth}>
-                {item.month}
+                {months[index]}
               </Text>
-              <Text 
-                variant="bodySmall" 
+              <Text
+                variant="bodySmall"
                 style={[
                   styles.indicatorValue,
-                  { color: item.utilization > 100 ? theme.colors.error : theme.colors.primary }
+                  { color: item.budget_utilization > 100 ? '#FF5722' : '#4CAF50' }
                 ]}
               >
-                {item.utilization.toFixed(0)}%
+                {item.budget_utilization.toFixed(0)}%
               </Text>
             </View>
           ))}
@@ -128,11 +136,6 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
     opacity: 0.6,
-  },
-  chartTitle: {
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '600',
   },
   legend: {
     flexDirection: 'row',
