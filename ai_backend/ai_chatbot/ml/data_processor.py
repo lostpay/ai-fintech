@@ -69,13 +69,22 @@ class DataProcessor:
     def _create_daily_aggregates(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Create daily spending aggregates by category
+        CRITICAL: Only use expenses, not income!
         """
-        # Filter only expenses (negative amounts or type='expense')
-        if 'type' in df.columns:
-            expense_df = df[df['type'] == 'expense'].copy()
+        # Filter only expenses - this is CRITICAL
+        if 'transaction_type' in df.columns:
+            expense_df = df[df['transaction_type'].str.lower() == 'expense'].copy()
+        elif 'type' in df.columns:
+            expense_df = df[df['type'].str.lower() == 'expense'].copy()
         else:
-            expense_df = df[df['amount'] < 0].copy()
-            expense_df['amount'] = expense_df['amount'].abs()
+            # Fallback: assume positive amounts are expenses in NT$ system
+            expense_df = df[df['amount'] > 0].copy()
+
+        # Ensure amounts are positive (absolute value)
+        expense_df['amount'] = expense_df['amount'].abs()
+
+        # Log filtering results
+        logger.info(f"Filtered to expenses: {len(expense_df)} from {len(df)} total transactions")
 
         # Create date index
         expense_df['date'] = expense_df['date'].dt.date

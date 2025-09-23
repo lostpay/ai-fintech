@@ -26,6 +26,7 @@ from ml.budget_generator import BudgetGenerator
 from ml.budget_generator_advanced import AdvancedBudgetGenerator
 from ml.pattern_detector import PatternDetector
 from ml.data_processor import DataProcessor
+from ml.forecaster import FinanceForecaster
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +54,7 @@ predictor = SpendingPredictor()
 budget_generator = BudgetGenerator()  # Keep old one for compatibility
 advanced_budget_generator = AdvancedBudgetGenerator()  # New notebook-based generator
 pattern_detector = PatternDetector()
+forecaster = FinanceForecaster()  # New fixed forecaster
 
 # Cache for predictions (15 minutes TTL)
 prediction_cache = {}
@@ -165,7 +167,77 @@ async def predict_spending(request: PredictionRequest):
 
         # Process data
         df = pd.DataFrame(transactions)
-        processed_data = data_processor.prepare_features(df)
+
+        # Try new forecaster first for better predictions
+        use_fallback = False
+        try:
+            if request.timeframe in ['daily', 'weekly']:
+                forecast_output = forecaster.forecast_from_transactions(
+                    df,
+                    horizon_days=14 if request.timeframe == 'daily' else 28
+                )
+
+                if not forecast_output.daily_forecast.empty:
+                    # Use forecaster results
+                    if request.timeframe == 'daily':
+                        predictions = [
+                            {
+                                'date': row['date'].isoformat(),
+                                'predicted_amount': float(row['pred_total']),
+                                'lower_bound': float(row['pred_total'] * 0.8),
+                                'upper_bound': float(row['pred_total'] * 1.2),
+                                'timeframe': 'daily'
+                            }
+                            for _, row in forecast_output.daily_forecast.head(request.horizon or 7).iterrows()
+                        ]
+                    else:  # weekly
+                        predictions = [
+                            {
+                                'week_start': (row['week_end'] - pd.Timedelta(days=6)).isoformat() if pd.notna(row.get('week_end')) else '',
+                                'week_end': row['week_end'].isoformat() if pd.notna(row.get('week_end')) else '',
+                                'predicted_amount': float(row.get('pred_sum', 0)),
+                                'lower_bound': float(row.get('pred_sum', 0) * 0.8),
+                                'upper_bound': float(row.get('pred_sum', 0) * 1.2),
+                                'timeframe': 'weekly'
+                            }
+                            for _, row in forecast_output.weekly_report.iterrows()
+                        ]
+
+                    # Return immediately with forecaster results
+                    response = PredictionResponse(
+                        predictions=predictions[:request.horizon or (7 if request.timeframe == 'daily' else 4)],
+                        confidence=forecast_output.confidence,
+                        drivers=['Total_7day_avg', 'Total_lag1', 'day_of_week'],
+                        timeframe=request.timeframe,
+                        generated_at=datetime.now().isoformat()
+                    )
+
+                    # Cache the response
+                    prediction_cache[cache_key] = {
+                        'timestamp': datetime.now().isoformat(),
+                        'data': response
+                    }
+
+                    # Store predictions in database
+                    await supabase.store_predictions(
+                        user_id=request.user_id,
+                        predictions=predictions,
+                        timeframe=request.timeframe,
+                        confidence=forecast_output.confidence
+                    )
+
+                    return response
+                else:
+                    use_fallback = True
+            else:
+                use_fallback = True  # Monthly uses old approach
+        except Exception as e:
+            logger.warning(f"Forecaster failed, using fallback: {str(e)}")
+            use_fallback = True
+
+        # Fallback to old approach if needed
+        if use_fallback:
+            processed_data = data_processor.prepare_features(df)
 
         # Train model if it doesn't exist
         import os
