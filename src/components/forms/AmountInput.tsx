@@ -28,7 +28,8 @@ const AmountInput: React.FC<AmountInputProps> = ({
       setDisplayValue('');
     } else {
       const dollars = value / 100;
-      setDisplayValue(dollars.toFixed(2));
+      // Don't force .00 format, show natural number
+      setDisplayValue(dollars % 1 === 0 ? dollars.toString() : dollars.toString());
     }
   }, [value]);
 
@@ -76,11 +77,7 @@ const AmountInput: React.FC<AmountInputProps> = ({
 
   const handleBlur = () => {
     setIsFocused(false);
-    // Format the final value properly
-    if (displayValue && !isNaN(parseFloat(displayValue))) {
-      const amount = parseFloat(displayValue);
-      setDisplayValue(amount.toFixed(2));
-    }
+    // Don't auto-format - let user enter numbers naturally
   };
 
   return (

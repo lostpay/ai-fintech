@@ -134,7 +134,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
                         />
                       </View>
                       <Text variant="bodySmall" style={styles.categoryDetails}>
-                        {formatCurrency(category.spent_amount)} • {percentage.toFixed(1)}%
+                        {formatCurrency(category.spent_amount)} • {Math.round(percentage)}%
                       </Text>
                     </View>
                   </View>

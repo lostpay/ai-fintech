@@ -118,7 +118,7 @@ export const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onEdit, onDelete
                 <Text style={styles.amountText}>
                   {formatCurrency(budget.spent_amount)}/{formatCurrency(budget.amount)}
                 </Text>
-                <Text style={styles.percentageText}>{budget.percentage}%</Text>
+                <Text style={styles.percentageText}>{Math.round(budget.percentage)}%</Text>
               </View>
 
               <View style={styles.progressContainer}>

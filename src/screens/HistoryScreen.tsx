@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, StyleSheet, SafeAreaView, SectionList, RefreshControl } from 'react-native';
-import { Surface, Portal, FAB } from 'react-native-paper';
+import { Surface } from 'react-native-paper';
 import { TransactionCard } from '../components/lists/TransactionCard';
 import { StickyDateHeader } from '../components/lists/StickyDateHeader';
 import { EmptyTransactionHistory } from '../components/common/EmptyTransactionHistory';
@@ -24,7 +24,6 @@ export const HistoryScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
-  const [fabVisible, setFabVisible] = useState(true);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -66,10 +65,6 @@ export const HistoryScreen: React.FC = () => {
   const handleCategoryFilter = useCallback((categoryId: number | null) => {
     setSelectedCategory(categoryId);
   }, []);
-
-  const handleAddExpense = useCallback(() => {
-    navigation.navigate('add-expense' as never);
-  }, [navigation]);
 
   // Filter transactions based on search term and category
   const filteredTransactions = useMemo(() => {
@@ -172,18 +167,6 @@ export const HistoryScreen: React.FC = () => {
           />
         )}
       </Surface>
-      
-      {/* Floating Action Button */}
-      <Portal>
-        <FAB
-          icon="plus"
-          style={[styles.fab, !fabVisible && styles.fabHidden]}
-          onPress={handleAddExpense}
-          label="Add"
-          visible={fabVisible}
-          testID="add-transaction-fab"
-        />
-      </Portal>
     </SafeAreaView>
   );
 };
@@ -201,20 +184,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sectionListContent: {
-    paddingBottom: 100, // Space for FAB
+    paddingBottom: 20, // Reduced padding since FAB is removed
   },
   noResultsContainer: {
     flex: 1,
     justifyContent: 'center',
-  },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    // backgroundColor will be applied via theme through react-native-paper
-  },
-  fabHidden: {
-    transform: [{ scale: 0 }],
   },
 });

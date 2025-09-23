@@ -114,7 +114,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
                     { color: getTrendColor(trend.trend_direction) }
                   ]}
                 >
-                  {trend.change_percentage >= 0 ? '+' : ''}{trend.change_percentage.toFixed(1)}%
+                  {trend.change_percentage >= 0 ? '+' : ''}{Math.round(trend.change_percentage)}%
                 </Text>
               </View>
             ))}
