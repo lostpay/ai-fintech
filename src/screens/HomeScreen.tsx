@@ -66,7 +66,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         <EmptyDashboard onAddExpense={handleAddExpense} />
         <FAB
           style={styles.fab}
-          icon={{ name: fabOpen ? 'close' : 'add', type: 'material', color: 'white' }}
+          icon={{ name: fabOpen ? 'close' : 'add', type: 'material-icons', color: 'white' }}
           color={theme.colors.primary}
           onPress={handleFABPress}
           testID="dashboard-fab"
@@ -75,7 +75,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           <>
             <FAB
               style={[styles.subFab, styles.subFabFirst]}
-              icon={{ name: 'smart-toy', type: 'material', color: 'white' }}
+              icon={{ name: 'smart-toy', type: 'material-icons', color: 'white' }}
               color={theme.colors.secondary || theme.colors.primary}
               onPress={handleOpenAI}
               size="small"
@@ -83,7 +83,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             />
             <FAB
               style={[styles.subFab, styles.subFabSecond]}
-              icon={{ name: 'add', type: 'material', color: 'white' }}
+              icon={{ name: 'add', type: 'material-icons', color: 'white' }}
               color={theme.colors.primary}
               onPress={handleAddExpense}
               size="small"
@@ -127,7 +127,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         />
 
         {/* Budget Progress Summary */}
-        <BudgetSummary maxItems={3} showUnbudgeted={true} />
+        <BudgetSummary showUnbudgeted={true} />
 
         {/* Recent Transactions */}
         <RecentTransactionsList
@@ -140,7 +140,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       {/* Floating Action Button */}
       <FAB
         style={styles.fab}
-        icon={{ name: fabOpen ? 'close' : 'add', type: 'material', color: 'white' }}
+        icon={{ name: fabOpen ? 'close' : 'add', type: 'material-icons', color: 'white' }}
         color={theme.colors.primary}
         onPress={handleFABPress}
         testID="dashboard-fab"
@@ -149,7 +149,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         <>
           <FAB
             style={[styles.subFab, styles.subFabFirst]}
-            icon={{ name: 'smart-toy', type: 'material', color: 'white' }}
+            icon={{ name: 'smart-toy', type: 'material-icons', color: 'white' }}
             color={theme.colors.secondary || theme.colors.primary}
             onPress={handleOpenAI}
             size="small"
@@ -157,7 +157,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           />
           <FAB
             style={[styles.subFab, styles.subFabSecond]}
-            icon={{ name: 'add', type: 'material', color: 'white' }}
+            icon={{ name: 'add', type: 'material-icons', color: 'white' }}
             color={theme.colors.primary}
             onPress={handleAddExpense}
             size="small"

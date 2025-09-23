@@ -4,8 +4,9 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Searchbar, Chip, Surface } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Text } from 'react-native';
+import { Searchbar, Surface } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 import { Category } from '../../types/Category';
 
 interface TransactionHistorySearchProps {
@@ -47,44 +48,59 @@ export const TransactionHistorySearch: React.FC<TransactionHistorySearchProps> =
       >
         <View style={styles.filterChips}>
           {/* All Categories Chip */}
-          <Chip
-            mode={selectedCategory === null ? 'flat' : 'outlined'}
+          <TouchableOpacity
             onPress={() => onCategoryFilter(null)}
             style={[
               styles.filterChip,
               selectedCategory === null && styles.selectedChip
             ]}
-            textStyle={[
-              styles.chipText,
-              selectedCategory === null && styles.selectedChipText
-            ]}
             disabled={isLoading}
             testID="filter-all-categories"
           >
-            All Categories
-          </Chip>
-          
+            <MaterialIcons
+              name="category"
+              size={16}
+              color={selectedCategory === null ? '#1D192B' : '#1C1B1F'}
+              style={styles.chipIcon}
+            />
+            <Text style={[
+              styles.chipText,
+              selectedCategory === null && styles.selectedChipText
+            ]}>
+              All Categories
+            </Text>
+          </TouchableOpacity>
+
           {/* Individual Category Chips */}
-          {categories.map((category) => (
-            <Chip
-              key={category.id}
-              mode={selectedCategory === category.id ? 'flat' : 'outlined'}
-              onPress={() => onCategoryFilter(category.id)}
-              icon={category.icon}
-              style={[
-                styles.filterChip,
-                selectedCategory === category.id && styles.selectedChip
-              ]}
-              textStyle={[
-                styles.chipText,
-                selectedCategory === category.id && styles.selectedChipText
-              ]}
-              disabled={isLoading}
-              testID={`filter-category-${category.id}`}
-            >
-              {category.name}
-            </Chip>
-          ))}
+          {categories.map((category) => {
+            const isSelected = selectedCategory === category.id;
+            return (
+              <TouchableOpacity
+                key={category.id}
+                onPress={() => onCategoryFilter(category.id)}
+                style={[
+                  styles.filterChip,
+                  isSelected && styles.selectedChip,
+                  { borderColor: isSelected ? category.color : '#79747E' }
+                ]}
+                disabled={isLoading}
+                testID={`filter-category-${category.id}`}
+              >
+                <MaterialIcons
+                  name={category.icon as any}
+                  size={16}
+                  color={isSelected ? '#1D192B' : '#1C1B1F'}
+                  style={styles.chipIcon}
+                />
+                <Text style={[
+                  styles.chipText,
+                  isSelected && styles.selectedChipText
+                ]}>
+                  {category.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
     </Surface>
@@ -120,13 +136,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     marginHorizontal: 4,
     backgroundColor: '#FFFBFE', // Material Design surface
     borderColor: '#79747E', // Material Design outline
+    borderWidth: 1,
+    borderRadius: 8,
+    minHeight: 32,
   },
   selectedChip: {
     backgroundColor: '#E8DEF8', // Material Design secondary-container
     borderColor: '#6750A4', // Material Design secondary
+  },
+  chipIcon: {
+    marginRight: 8,
   },
   chipText: {
     fontSize: 14,

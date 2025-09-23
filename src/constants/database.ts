@@ -4,12 +4,12 @@ export const DATABASE_VERSION = 1;
 // Default categories data
 export const DEFAULT_CATEGORIES = [
   { name: 'Dining', color: '#FF9800', icon: 'restaurant', is_default: 1 },
-  { name: 'Groceries', color: '#4CAF50', icon: 'shopping-cart', is_default: 1 },
+  { name: 'Groceries', color: '#4CAF50', icon: 'local-grocery-store', is_default: 1 },
   { name: 'Transportation', color: '#2196F3', icon: 'directions-car', is_default: 1 },
   { name: 'Entertainment', color: '#9C27B0', icon: 'movie', is_default: 1 },
   { name: 'Shopping', color: '#F44336', icon: 'shopping-bag', is_default: 1 },
   { name: 'Healthcare', color: '#00BCD4', icon: 'local-hospital', is_default: 1 },
-  { name: 'Utilities', color: '#607D8B', icon: 'flash-on', is_default: 1 },
+  { name: 'Utilities', color: '#607D8B', icon: 'bolt', is_default: 1 },
   { name: 'Income', color: '#8BC34A', icon: 'attach-money', is_default: 1 },
   { name: 'Other', color: '#795548', icon: 'category', is_default: 1 },
 ];

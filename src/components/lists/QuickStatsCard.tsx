@@ -44,7 +44,7 @@ export const QuickStatsCard: React.FC<QuickStatsCardProps> = ({
             <View style={styles.iconContainer}>
               <Icon 
                 name={stat.icon} 
-                type="material" 
+                type="material-icons" 
                 size={24} 
                 color={stat.color} 
               />

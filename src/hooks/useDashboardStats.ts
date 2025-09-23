@@ -5,7 +5,7 @@ import { formatCurrency } from '../utils/currency';
 
 export interface DashboardData {
   totalSpentThisMonth: number;     // Sum of current month expenses in cents
-  recentTransactions: TransactionWithCategory[]; // Last 5 transactions
+  recentTransactions: TransactionWithCategory[]; // All transactions
   weeklySpending: number;          // Last 7 days spending in cents
   currentMonth: string;            // Formatted month name
   transactionCount: number;        // Total transactions this month
@@ -46,8 +46,8 @@ export const useDashboardStats = (): DashboardStats => {
     // Calculate weekly spending
     const weeklySpending = weeklyTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
 
-    // Get last 5 transactions (all types)
-    const recentTransactionsList = recentTransactions.slice(0, 5);
+    // Get all transactions (all types)
+    const recentTransactionsList = recentTransactions;
 
     // Format current month
     const currentMonth = new Intl.DateTimeFormat('en-US', {

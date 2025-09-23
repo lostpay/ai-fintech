@@ -17,9 +17,9 @@ interface BudgetSummaryProps {
   showUnbudgeted?: boolean;
 }
 
-export const BudgetSummary: React.FC<BudgetSummaryProps> = ({ 
-  maxItems = 3,
-  showUnbudgeted = true 
+export const BudgetSummary: React.FC<BudgetSummaryProps> = ({
+  maxItems, // No default limit
+  showUnbudgeted = true
 }) => {
   const { theme } = useTheme();
   const navigation = useNavigation();
@@ -206,10 +206,10 @@ export const BudgetSummary: React.FC<BudgetSummaryProps> = ({
       return null;
     }
 
-    // Show high priority budgets first, then others, limited to maxItems
+    // Show high priority budgets first, then others
     const priorityBudgets = budgetProgress.filter(bp => isHighPriorityBudget(bp.percentage_used));
     const regularBudgets = budgetProgress.filter(bp => !isHighPriorityBudget(bp.percentage_used));
-    const displayBudgets = [...priorityBudgets, ...regularBudgets].slice(0, maxItems);
+    const displayBudgets = maxItems ? [...priorityBudgets, ...regularBudgets].slice(0, maxItems) : [...priorityBudgets, ...regularBudgets];
 
     return (
       <ScrollView 

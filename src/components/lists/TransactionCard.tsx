@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Card, Text, Avatar, TouchableRipple } from 'react-native-paper';
+import { Card, Text, TouchableRipple } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 import { TransactionWithCategory } from '../../types/Transaction';
 import { formatCurrency } from '../../utils/currency';
 import { formatRelativeDate } from '../../utils/dateFormatting';
@@ -39,16 +40,17 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({
       >
         <Card.Content style={styles.cardContent}>
           <View style={styles.leftSection}>
-            {/* Category Icon with Material Design Avatar */}
-            <Avatar.Icon
-              size={48}
-              icon={transaction.category_icon as any}
-              style={[
-                styles.categoryIcon, 
-                { backgroundColor: transaction.category_color }
-              ]}
-              theme={{ colors: { onSurfaceVariant: '#FFFFFF' } }}
-            />
+            {/* Category Icon with Material Design */}
+            <View style={[
+              styles.categoryIcon,
+              { backgroundColor: transaction.category_color }
+            ]}>
+              <MaterialIcons
+                name={transaction.category_icon as any}
+                size={24}
+                color="#FFFFFF"
+              />
+            </View>
             
             {/* Transaction Information */}
             <View style={styles.transactionInfo}>
@@ -113,7 +115,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   transactionInfo: {
     flex: 1,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Card, Text, ProgressBar, IconButton } from 'react-native-paper';
+import { Card, Text, ProgressBar } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -93,6 +93,7 @@ export const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onEdit, onDelete
     },
     actionButton: {
       marginLeft: 8,
+      padding: 8,
     },
   });
 
@@ -133,20 +134,20 @@ export const BudgetCard: React.FC<BudgetCardProps> = ({ budget, onEdit, onDelete
 
           {/* Action buttons */}
           <View style={styles.actionsRow}>
-            <IconButton
-              icon="edit"
-              size={20}
-              iconColor={theme.colors.onSurfaceVariant}
-              style={styles.actionButton}
-              onPress={onEdit}
-            />
-            <IconButton
-              icon="delete"
-              size={20}
-              iconColor={theme.colors.onSurfaceVariant}
-              style={styles.actionButton}
-              onPress={onDelete}
-            />
+            <TouchableOpacity onPress={onEdit} style={styles.actionButton}>
+              <MaterialIcons
+                name="edit"
+                size={20}
+                color={theme.colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
+              <MaterialIcons
+                name="delete"
+                size={20}
+                color={theme.colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>

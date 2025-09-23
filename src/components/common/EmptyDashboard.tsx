@@ -14,7 +14,7 @@ export const EmptyDashboard: React.FC<EmptyDashboardProps> = ({
       <View style={styles.iconContainer}>
         <Icon 
           name="account-balance-wallet" 
-          type="material" 
+          type="material-icons" 
           size={64} 
           color="#E0E0E0" // Material Design outline
         />
@@ -35,7 +35,7 @@ export const EmptyDashboard: React.FC<EmptyDashboardProps> = ({
           titleStyle={styles.actionButtonText}
           icon={{
             name: 'add',
-            type: 'material',
+            type: 'material-icons',
             size: 20,
             color: '#FFFFFF',
           }}

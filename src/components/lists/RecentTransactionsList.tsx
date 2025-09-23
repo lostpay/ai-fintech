@@ -38,7 +38,7 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
         <View style={styles.emptyContainer}>
           <Icon 
             name="receipt" 
-            type="material" 
+            type="material-icons" 
             size={48} 
             color="#E0E0E0" 
           />
@@ -74,7 +74,7 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
             <View style={[styles.categoryIcon, { backgroundColor: transaction.category_color + '20' }]}>
               <Icon
                 name={transaction.category_icon || 'category'}
-                type="material"
+                type="material-icons"
                 size={20}
                 color={transaction.category_color || '#757575'}
               />

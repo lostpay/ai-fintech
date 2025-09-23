@@ -8,11 +8,9 @@ import {
   Modal as RNModal,
   TouchableOpacity
 } from 'react-native';
-import { 
-  FAB, 
-  Card, 
-  Text, 
-  IconButton
+import {
+  Card,
+  Text
 } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -160,6 +158,22 @@ export const BudgetScreen: React.FC = () => {
       right: 16,
       bottom: 16,
       backgroundColor: theme.colors.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderRadius: 28,
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+    },
+    fabLabel: {
+      color: 'white',
+      marginLeft: 8,
+      fontSize: 16,
+      fontWeight: '500',
     },
     analyticsPreview: {
       marginBottom: 24,
@@ -221,13 +235,13 @@ export const BudgetScreen: React.FC = () => {
               <Text style={styles.headerTitle}>Create a budget</Text>
               <Text style={styles.headerSubtitle}>Save more by setting a budget</Text>
             </View>
-            <IconButton
-              icon="add"
-              size={24}
-              iconColor={theme.colors.primary}
-              style={styles.addButton}
-              onPress={handleCreateBudget}
-            />
+            <TouchableOpacity onPress={handleCreateBudget} style={styles.addButton}>
+              <MaterialIcons
+                name="add"
+                size={24}
+                color={theme.colors.primary}
+              />
+            </TouchableOpacity>
           </View>
         </Card>
 
@@ -280,12 +294,14 @@ export const BudgetScreen: React.FC = () => {
       </ScrollView>
 
       {/* Floating Action Button */}
-      <FAB
-        icon="add"
+      <TouchableOpacity
         style={styles.fab}
         onPress={handleCreateBudget}
-        label="Add Budget"
-      />
+        activeOpacity={0.8}
+      >
+        <MaterialIcons name="add" size={24} color="white" />
+        <Text style={styles.fabLabel}>Add Budget</Text>
+      </TouchableOpacity>
 
       {/* Budget Form Modal */}
       <RNModal

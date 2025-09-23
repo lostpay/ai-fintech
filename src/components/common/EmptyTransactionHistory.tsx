@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Button, Text, Avatar } from 'react-native-paper';
+import { Button, Text } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 
@@ -32,12 +33,13 @@ export const EmptyTransactionHistory: React.FC = () => {
     <View style={styles.emptyContainer}>
       {/* Illustration */}
       <View style={styles.illustrationContainer}>
-        <Avatar.Icon
-          size={120}
-          icon="receipt-text-outline"
-          style={styles.emptyIcon}
-          theme={{ colors: { onSurfaceVariant: '#6750A4' } }}
-        />
+        <View style={styles.emptyIcon}>
+          <MaterialIcons
+            name="receipt"
+            size={60}
+            color="#6750A4"
+          />
+        </View>
       </View>
       
       {/* Title and Message */}
@@ -55,7 +57,6 @@ export const EmptyTransactionHistory: React.FC = () => {
         onPress={handleAddTransaction}
         style={styles.addButton}
         contentStyle={styles.addButtonContent}
-        icon="plus"
         testID="add-first-transaction-button"
       >
         Add First Transaction
@@ -87,7 +88,12 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   emptyIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#F3E5F5', // Light purple background
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyTitle: {
     textAlign: 'center',
