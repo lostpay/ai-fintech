@@ -244,6 +244,65 @@ TOOLS = [
                 "required": ["analysis_type"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_data",
+            "description": "Create new transactions, budgets, goals, or categories in the database",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_type": {
+                        "type": "string",
+                        "enum": ["transaction", "budget", "goal", "category"],
+                        "description": "Type of data to create"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "Amount in dollars (for transaction, budget, goal)"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description or name (for transactions: what was purchased/paid for, e.g. 'coffee', 'lunch', 'gas')"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Category name (for transaction) or new category name (for category creation)"
+                    },
+                    "transaction_type": {
+                        "type": "string",
+                        "enum": ["expense", "income"],
+                        "description": "Type of transaction (only for transaction creation)"
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date in YYYY-MM-DD format (optional, defaults to today)"
+                    },
+                    "period_start": {
+                        "type": "string",
+                        "description": "Budget start date in YYYY-MM-DD format (for budget creation)"
+                    },
+                    "period_end": {
+                        "type": "string",
+                        "description": "Budget end date in YYYY-MM-DD format (for budget creation)"
+                    },
+                    "target_date": {
+                        "type": "string",
+                        "description": "Goal target date in YYYY-MM-DD format (for goal creation, optional)"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Category color (for category creation, optional)"
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "Category icon (for category creation, optional)"
+                    }
+                },
+                "required": ["data_type", "description"]
+            }
+        }
     }
 ]
 
@@ -270,6 +329,7 @@ def get_system_prompt(lang: str) -> str:
         return """你是专业的个人财务助理。
 - 只要用户的问题涉及【金额/上月/本月/分类/趋势/是否超支/合计】→ 必须调用函数 query_expenses。
 - 如果用户询问【预测/预报/明天/下週/下周/本月/会不会花/花多少/预算/建议预算/分配/优化/节省/节约/支出模式/规律】→ 必须调用函数 ml_analysis。
+- 如果用户要求【添加/记录/创建/新建/保存】【交易/支出/收入/预算/目标/类别】→ 必须调用函数 create_data。
 - 如果是使用说明/常见问题 → 调用函数 search_docs。
 - 除非明确是纯解释问题，否则不要直接回答，优先触发工具。
 请用中文回答。"""
@@ -277,6 +337,7 @@ def get_system_prompt(lang: str) -> str:
         return """You are a professional personal finance assistant.
 - If the user asks about amounts/month/category/trends/overspending/totals → you MUST call function query_expenses.
 - If the user asks about predictions/forecasts/tomorrow/next week/this month/budgets/budget recommendations/allocation/optimization/savings/spending patterns/will I overspend → you MUST call function ml_analysis.
+- If the user wants to add/record/create/save transactions/expenses/income/budgets/goals/categories → you MUST call function create_data.
 - For how-to/FAQ → call search_docs.
 - Prefer tools first; don't answer directly unless it's a pure explanation."""
 
@@ -329,6 +390,139 @@ async def call_rag(query: str, lang: str) -> Dict:
             except httpx.HTTPError:
                 pass
         return {"error": "RAG service unreachable"}
+
+async def call_data_creation_service(data_type: str, user_id: str, **kwargs) -> Dict:
+    """Call data creation service to create new records"""
+    try:
+        logger.info(f"Creating {data_type} with parameters: {kwargs}")
+
+        # Import the Supabase service
+        import sys
+        from pathlib import Path
+        current_dir = Path(__file__).parent.parent
+        sys.path.insert(0, str(current_dir))
+        from supabase_service import SupabaseService
+
+        service = SupabaseService(user_id=user_id)
+
+        if data_type == "transaction":
+            amount = kwargs.get("amount", 0)
+            description = kwargs.get("description", "")
+            category_name = kwargs.get("category", "")
+            transaction_type = kwargs.get("transaction_type", "expense")
+            date_str = kwargs.get("date")
+
+            # If description is empty, use a default based on category
+            if not description or description.strip() == "":
+                description = f"{transaction_type} - {category_name}" if category_name else f"{transaction_type} transaction"
+
+            # Find or create category
+            category_id = service.find_category_by_name(category_name)
+            if not category_id:
+                category_id = service.create_category(category_name)
+                if not category_id:
+                    return {"error": "Failed to create category"}
+
+            transaction_id = service.create_transaction(
+                amount=amount,
+                description=description,
+                category_id=category_id,
+                transaction_type=transaction_type,
+                date_str=date_str
+            )
+
+            if transaction_id:
+                return {
+                    "success": True,
+                    "type": "transaction",
+                    "id": transaction_id,
+                    "message": f"Created {transaction_type} of ${amount:.2f} for {description}"
+                }
+            else:
+                return {"error": "Failed to create transaction"}
+
+        elif data_type == "budget":
+            category_name = kwargs.get("category", "")
+            amount = kwargs.get("amount", 0)
+            period_start = kwargs.get("period_start")
+            period_end = kwargs.get("period_end")
+
+            if not period_start or not period_end:
+                return {"error": "Budget requires period_start and period_end dates"}
+
+            # Find or create category
+            category_id = service.find_category_by_name(category_name)
+            if not category_id:
+                category_id = service.create_category(category_name)
+                if not category_id:
+                    return {"error": "Failed to create category"}
+
+            budget_id = service.create_budget(
+                category_id=category_id,
+                amount=amount,
+                period_start=period_start,
+                period_end=period_end
+            )
+
+            if budget_id:
+                return {
+                    "success": True,
+                    "type": "budget",
+                    "id": budget_id,
+                    "message": f"Created budget of ${amount:.2f} for {category_name}"
+                }
+            else:
+                return {"error": "Failed to create budget"}
+
+        elif data_type == "goal":
+            name = kwargs.get("description", "")
+            target_amount = kwargs.get("amount", 0)
+            description = kwargs.get("description", "")
+            target_date = kwargs.get("target_date")
+
+            goal_id = service.create_goal(
+                name=name,
+                target_amount=target_amount,
+                description=description,
+                target_date=target_date
+            )
+
+            if goal_id:
+                return {
+                    "success": True,
+                    "type": "goal",
+                    "id": goal_id,
+                    "message": f"Created goal '{name}' with target ${target_amount:.2f}"
+                }
+            else:
+                return {"error": "Failed to create goal"}
+
+        elif data_type == "category":
+            name = kwargs.get("category", kwargs.get("description", ""))
+            color = kwargs.get("color", "#4CAF50")
+            icon = kwargs.get("icon", "help-outline")
+
+            category_id = service.create_category(
+                name=name,
+                color=color,
+                icon=icon
+            )
+
+            if category_id:
+                return {
+                    "success": True,
+                    "type": "category",
+                    "id": category_id,
+                    "message": f"Created category '{name}'"
+                }
+            else:
+                return {"error": "Failed to create category"}
+        else:
+            return {"error": f"Unknown data type: {data_type}"}
+
+    except Exception as e:
+        logger.error(f"Data creation error: {e}")
+        return {"error": f"Data creation service error: {str(e)}"}
 
 async def call_ml_service(analysis_type: str, user_id: str, timeframe: str = None, horizon: int = None) -> Dict:
     """Call ML service for predictions, budgets, or patterns"""
@@ -409,6 +603,20 @@ async def execute_tool(tool_call: ToolCall, user_id: str, lang: str) -> Dict:
         )
         return {
             "tool": "ml_analysis",
+            "result": result
+        }
+    elif tool_call.tool == "create_data":
+        # Extract data_type separately to avoid duplicate parameter error
+        params = tool_call.params.copy()
+        data_type = params.pop("data_type", "")
+
+        result = await call_data_creation_service(
+            data_type,
+            user_id,
+            **params
+        )
+        return {
+            "tool": "create_data",
             "result": result
         }
     else:
@@ -519,6 +727,11 @@ Focus on the key information the user needs."""
                         embedded_data = ml_result
                     elif "recurrences" in ml_result:  # Pattern response
                         embedded_data = ml_result
+                elif result["tool"] == "create_data" and "result" in result:
+                    # Data creation results - can be embedded to show success
+                    create_result = result["result"]
+                    if create_result.get("success"):
+                        embedded_data = create_result
 
             return ChatResponse(
                 text=response_text,

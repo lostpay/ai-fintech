@@ -394,6 +394,46 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error creating goal: {e}")
             return None
+
+    def create_category(self, name: str, color: str = "#4CAF50", icon: str = "help-outline") -> Optional[int]:
+        """Create a new category"""
+        try:
+            data = {
+                "name": name,
+                "color": color,
+                "icon": icon,
+                "is_default": False,
+                "is_hidden": False,
+                "user_id": self.user_id
+            }
+
+            response = self.client.table("categories").insert(data).execute()
+
+            if response.data:
+                return response.data[0]["id"]
+            return None
+
+        except Exception as e:
+            logger.error(f"Error creating category: {e}")
+            return None
+
+    def find_category_by_name(self, name: str) -> Optional[int]:
+        """Find category ID by name (case-insensitive)"""
+        try:
+            response = (self.client
+                       .table("categories")
+                       .select("id, name")
+                       .or_(f"user_id.eq.{self.user_id},user_id.is.null")
+                       .execute())
+
+            for row in response.data:
+                if row["name"].lower() == name.lower():
+                    return row["id"]
+            return None
+
+        except Exception as e:
+            logger.error(f"Error finding category: {e}")
+            return None
     
     def cleanup(self):
         """Cleanup resources"""
