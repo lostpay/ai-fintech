@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, SafeAreaView, SectionList, RefreshControl, Alert } from 'react-native';
-import { Surface } from 'react-native-paper';
+import { View, StyleSheet, SafeAreaView, SectionList, RefreshControl, Alert, ScrollView } from 'react-native';
+import { Surface, IconButton, Text, Appbar } from 'react-native-paper';
 import { TransactionCard } from '../components/lists/TransactionCard';
 import { StickyDateHeader } from '../components/lists/StickyDateHeader';
 import { EmptyTransactionHistory } from '../components/common/EmptyTransactionHistory';
 import { TransactionHistorySearch } from '../components/common/TransactionHistorySearch';
 import { LoadingState } from '../components/common/LoadingState';
+import { ExpenseStatistics } from '../components/history/ExpenseStatistics';
 import { TransactionWithCategory } from '../types/Transaction';
 import { Category } from '../types/Category';
 import { databaseService } from '../services';
@@ -27,6 +28,7 @@ export const HistoryScreen: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showStatistics, setShowStatistics] = useState(true);
 
   const loadTransactions = useCallback(async () => {
     try {
@@ -146,28 +148,26 @@ export const HistoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Surface style={[styles.surface, { backgroundColor: theme.colors.surface }]} elevation={0}>
-        {/* Search and Filter */}
-        <TransactionHistorySearch
-          searchTerm={searchTerm}
-          onSearchChange={handleSearchChange}
-          selectedCategory={selectedCategory}
-          onCategoryFilter={handleCategoryFilter}
-          categories={categories}
-          isLoading={loading}
+      {/* Header with toggle */}
+      <Appbar.Header style={{ backgroundColor: theme.colors.surface }}>
+        <Appbar.Content title={showStatistics ? "Expenses" : "History"} />
+        <Appbar.Action
+          icon={showStatistics ? "format-list-bulleted" : "chart-bar"}
+          onPress={() => setShowStatistics(!showStatistics)}
         />
-        
-        {/* Transaction List */}
-        {groupedTransactions.length === 0 && (searchTerm || selectedCategory !== null) ? (
-          <View style={styles.noResultsContainer}>
-            <EmptyTransactionHistory />
-          </View>
-        ) : (
-          <SectionList
-            sections={groupedTransactions}
-            keyExtractor={keyExtractor}
-            renderItem={renderTransactionCard}
-            renderSectionHeader={renderSectionHeader}
+        <Appbar.Action
+          icon="plus"
+          onPress={() => navigation.navigate('Add' as never)}
+        />
+      </Appbar.Header>
+
+      <Surface style={[styles.surface, { backgroundColor: theme.colors.surface }]} elevation={0}>
+        {showStatistics ? (
+          /* Statistics View */
+          <ScrollView
+            style={styles.statisticsContainer}
+            contentContainerStyle={styles.statisticsContent}
+            showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
                 refreshing={loading}
@@ -176,16 +176,53 @@ export const HistoryScreen: React.FC = () => {
                 tintColor={theme.colors.primary}
               />
             }
-            removeClippedSubviews={true}
-            maxToRenderPerBatch={10}
-            updateCellsBatchingPeriod={100}
-            initialNumToRender={15}
-            windowSize={10}
-            stickySectionHeadersEnabled={true}
-            style={styles.sectionList}
-            contentContainerStyle={styles.sectionListContent}
-            testID="transaction-history-list"
-          />
+          >
+            <ExpenseStatistics transactions={transactions} />
+          </ScrollView>
+        ) : (
+          /* List View */
+          <>
+            {/* Search and Filter */}
+            <TransactionHistorySearch
+              searchTerm={searchTerm}
+              onSearchChange={handleSearchChange}
+              selectedCategory={selectedCategory}
+              onCategoryFilter={handleCategoryFilter}
+              categories={categories}
+              isLoading={loading}
+            />
+
+            {/* Transaction List */}
+            {groupedTransactions.length === 0 && (searchTerm || selectedCategory !== null) ? (
+              <View style={styles.noResultsContainer}>
+                <EmptyTransactionHistory />
+              </View>
+            ) : (
+              <SectionList
+                sections={groupedTransactions}
+                keyExtractor={keyExtractor}
+                renderItem={renderTransactionCard}
+                renderSectionHeader={renderSectionHeader}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={loading}
+                    onRefresh={handleRefresh}
+                    colors={[theme.colors.primary]}
+                    tintColor={theme.colors.primary}
+                  />
+                }
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={10}
+                updateCellsBatchingPeriod={100}
+                initialNumToRender={15}
+                windowSize={10}
+                stickySectionHeadersEnabled={true}
+                style={styles.sectionList}
+                contentContainerStyle={styles.sectionListContent}
+                testID="transaction-history-list"
+              />
+            )}
+          </>
         )}
       </Surface>
 
@@ -203,12 +240,18 @@ export const HistoryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 25, // Increased padding to avoid UI blocking and bring search bar lower
     // backgroundColor will be applied dynamically via theme
   },
   surface: {
     flex: 1,
     // backgroundColor will be applied dynamically via theme
+  },
+  statisticsContainer: {
+    flex: 1,
+  },
+  statisticsContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   sectionList: {
     flex: 1,

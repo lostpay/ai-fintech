@@ -262,6 +262,14 @@ export const AppNavigator: React.FC = () => {
             presentation: 'modal',
           }}
         />
+        <Stack.Screen
+          name="Add"
+          component={AddExpenseScreen}
+          options={{
+            headerShown: false, // Screen handles its own header
+            presentation: 'modal',
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

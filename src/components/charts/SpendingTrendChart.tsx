@@ -12,14 +12,13 @@ interface SpendingTrendChartProps {
   showTrendIndicators?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-
 export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
   data,
   height = 220,
   showTrendIndicators = true,
 }) => {
   const theme = useTheme();
+  const screenWidth = Dimensions.get('window').width;
 
   if (!data || data.length === 0) {
     return (
@@ -99,7 +98,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
 
       <LineChart
         data={chartData}
-        width={screenWidth - 32}
+        width={screenWidth - 64} // Increased padding for better fit
         height={height}
         yAxisLabel="$"
         yAxisSuffix=""
@@ -114,6 +113,7 @@ export const SpendingTrendChart: React.FC<SpendingTrendChartProps> = ({
         withDots={true}
         withShadow={false}
         getDotColor={() => '#2196F3'}
+        segments={4}
       />
 
       {showTrendIndicators && (

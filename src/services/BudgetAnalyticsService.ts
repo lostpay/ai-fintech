@@ -10,7 +10,7 @@ import {
 
 export class BudgetAnalyticsService {
   private cache = new Map<string, { data: any; timestamp: number }>();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL = 30 * 1000; // 30 seconds for testing
 
   constructor(
     private databaseService: DatabaseService,
@@ -26,7 +26,7 @@ export class BudgetAnalyticsService {
   ): Promise<MonthlyBudgetPerformance[]> {
     const cacheKey = this.getCacheKey('monthlyPerformance', [startDate, endDate]);
     const cached = this.getCachedResult<MonthlyBudgetPerformance[]>(cacheKey);
-    
+
     if (cached) {
       return cached;
     }
@@ -35,22 +35,28 @@ export class BudgetAnalyticsService {
       const months = this.getMonthsInRange(startDate, endDate);
       const results: MonthlyBudgetPerformance[] = [];
 
+      // Get all categories to ensure we track spending even without budgets
+      const allCategories = await this.databaseService.getCategories();
+
       for (const month of months) {
         const monthStart = new Date(month + '-01');
         const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
-        // Get all budgets for this month - use proper database service method
+        // Get all budgets for this month
         const budgets = await this.getBudgetsForMonth(monthStart, monthEnd);
 
         let totalBudgeted = 0;
         let totalSpent = 0;
         let budgetsMet = 0;
         const categories: CategoryPerformance[] = [];
+        const processedCategoryIds = new Set<number>();
 
+        // Process categories with budgets
         for (const budget of budgets) {
           // Calculate actual spending for this category in this month
-          const spentAmount = await this.getMonthlySpending(budget.category_id, monthStart, monthEnd);
+          const spentAmount = await this.getMonthlySpendingUsingService(budget.category_id, monthStart, monthEnd);
           const utilization = budget.amount > 0 ? (spentAmount / budget.amount) * 100 : 0;
+          processedCategoryIds.add(budget.category_id);
 
           totalBudgeted += budget.amount;
           totalSpent += spentAmount;
@@ -83,22 +89,49 @@ export class BudgetAnalyticsService {
           });
         }
 
-        const budgetUtilization = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
-        const successRate = budgets.length > 0 ? (budgetsMet / budgets.length) * 100 : 0;
-        const averageOverspend = totalSpent > totalBudgeted ? 
-          (totalSpent - totalBudgeted) / Math.max(budgets.length - budgetsMet, 1) : 0;
+        // Also process categories without budgets but with spending
+        for (const category of allCategories) {
+          if (!processedCategoryIds.has(category.id)) {
+            const spentAmount = await this.getMonthlySpendingUsingService(category.id, monthStart, monthEnd);
+            if (spentAmount > 0) {
+              totalSpent += spentAmount;
 
-        results.push({
-          month,
-          total_budgeted: totalBudgeted,
-          total_spent: totalSpent,
-          budget_utilization: budgetUtilization,
-          budgets_met: budgetsMet,
-          total_budgets: budgets.length,
-          success_rate: successRate,
-          average_overspend: averageOverspend,
-          categories,
-        });
+              categories.push({
+                category_id: category.id,
+                category_name: category.name,
+                category_color: category.color,
+                category_icon: category.icon || 'help-outline',
+                budgeted_amount: 0,
+                spent_amount: spentAmount,
+                utilization_percentage: 0,
+                status: 'over' as const,
+                trend: 'stable' as const,
+                consistency_score: 0,
+                recommendations: [`No budget set for ${category.name}. Consider setting a budget to track spending.`],
+              });
+            }
+          }
+        }
+
+        // Include the month even if no budgets exist but there's spending
+        if (budgets.length > 0 || categories.length > 0 || totalSpent > 0) {
+          const budgetUtilization = totalBudgeted > 0 ? (totalSpent / totalBudgeted) * 100 : 0;
+          const successRate = budgets.length > 0 ? (budgetsMet / budgets.length) * 100 : 0;
+          const averageOverspend = totalSpent > totalBudgeted ?
+            (totalSpent - totalBudgeted) / Math.max(budgets.length - budgetsMet, 1) : 0;
+
+          results.push({
+            month,
+            total_budgeted: totalBudgeted,
+            total_spent: totalSpent,
+            budget_utilization: budgetUtilization,
+            budgets_met: budgetsMet,
+            total_budgets: budgets.length,
+            success_rate: successRate,
+            average_overspend: averageOverspend,
+            categories,
+          });
+        }
       }
 
       this.setCachedResult(cacheKey, results);
@@ -136,19 +169,20 @@ export class BudgetAnalyticsService {
         const monthStart = new Date(month + '-01');
         const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
 
-        // Get spending for this month
-        const query = categoryId 
-          ? `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-             WHERE category_id = ? AND date >= ? AND date <= ? AND transaction_type = 'expense'`
-          : `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-             WHERE date >= ? AND date <= ? AND transaction_type = 'expense'`;
-        
-        const params = categoryId 
-          ? [categoryId, monthStart.toISOString(), monthEnd.toISOString()]
-          : [monthStart.toISOString(), monthEnd.toISOString()];
-
-        const result = await this.executeQuery<{ total: number }>(query, params, 'first') as { total: number } | null;
-        const amount = result?.total || 0;
+        // Get spending for this month using DatabaseService
+        let amount = 0;
+        if (categoryId) {
+          amount = await this.getMonthlySpendingUsingService(categoryId, monthStart, monthEnd);
+        } else {
+          // Get all expense transactions for this month
+          const transactions = await this.databaseService.getTransactions(
+            undefined, // all categories
+            'expense',
+            monthStart,
+            monthEnd
+          );
+          amount = transactions.reduce((sum, t) => sum + t.amount, 0);
+        }
 
         // Calculate change from previous month
         let changeFromPrevious = 0;
@@ -396,7 +430,7 @@ export class BudgetAnalyticsService {
   private getMonthsInRange(startDate: Date, endDate: Date): string[] {
     const months: string[] = [];
     const current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    const end = new Date(endDate.getFullYear(), endDate.getMonth() + 1, 0); // Include the end month
 
     while (current <= end) {
       months.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`);
@@ -412,9 +446,9 @@ export class BudgetAnalyticsService {
 
     // Get spending for last 3 months
     const recentSpending = await Promise.all([
-      this.getMonthlySpending(categoryId, twoMonthsAgo),
-      this.getMonthlySpending(categoryId, previousMonth),
-      this.getMonthlySpending(categoryId, currentMonth),
+      this.getMonthlySpendingUsingService(categoryId, twoMonthsAgo),
+      this.getMonthlySpendingUsingService(categoryId, previousMonth),
+      this.getMonthlySpendingUsingService(categoryId, currentMonth),
     ]);
 
     const [twoMonthsSpending, lastMonthSpending, currentSpending] = recentSpending;
@@ -426,25 +460,6 @@ export class BudgetAnalyticsService {
     if (trend1 < 0 && trend2 < 0) return 'improving'; // Decreasing spending
     if (trend1 > 0 && trend2 > 0) return 'worsening'; // Increasing spending
     return 'stable';
-  }
-
-  private async getMonthlySpending(categoryId: number, monthStart: Date, monthEnd?: Date): Promise<number> {
-    // If monthEnd is not provided, calculate it from monthStart
-    if (!monthEnd) {
-      const month = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
-      monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-      monthStart = month;
-    }
-
-    const result = await this.executeQuery<{ total: number }>(
-      `SELECT COALESCE(SUM(amount), 0) as total
-       FROM transactions
-       WHERE category_id = ? AND date >= ? AND date <= ? AND transaction_type = 'expense'`,
-      [categoryId, monthStart.toISOString().split('T')[0], monthEnd.toISOString().split('T')[0]],
-      'first'
-    ) as { total: number } | null;
-
-    return result?.total || 0;
   }
 
   private async calculateConsistencyScore(categorySpending: number[], budgetAmount: number): Promise<number> {
@@ -491,64 +506,73 @@ export class BudgetAnalyticsService {
   // ========== DATABASE HELPER METHODS ==========
 
   /**
-   * Execute database queries safely with proper error handling and retry logic
+   * Get budgets for a specific month with category information
+   * Uses the DatabaseService methods instead of raw SQL
    */
-  private async executeQuery<T>(
-    query: string, 
-    params: any[], 
-    type: 'first' | 'all' = 'all',
-    retryCount = 0
-  ): Promise<T | T[] | null> {
-    const maxRetries = 3;
-    const baseDelay = 200;
-    
+  private async getBudgetsForMonth(monthStart: Date, monthEnd: Date): Promise<any[]> {
     try {
-      // Ensure database is initialized before each query
       await this.databaseService.initialize();
-      
-      // Add a small delay to prevent rapid consecutive calls
-      if (retryCount > 0) {
-        const delay = baseDelay * Math.pow(2, retryCount - 1); // Exponential backoff
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
 
-      if (type === 'first') {
-        return await this.databaseService.getQuery<T>(query, params);
-      } else {
-        return await this.databaseService.getAllQuery<T>(query, params);
-      }
+      // Get all budgets and categories
+      const budgets = await this.databaseService.getBudgets();
+      const categories = await this.databaseService.getCategories();
+
+      // Convert dates to ISO string format for comparison
+      const monthStartStr = monthStart.toISOString().split('T')[0];
+      const monthEndStr = monthEnd.toISOString().split('T')[0];
+
+      // Filter budgets that overlap with the given period
+      const filteredBudgets = budgets.filter(budget => {
+        const budgetStart = typeof budget.period_start === 'string'
+          ? budget.period_start
+          : budget.period_start.toISOString().split('T')[0];
+        const budgetEnd = typeof budget.period_end === 'string'
+          ? budget.period_end
+          : budget.period_end.toISOString().split('T')[0];
+
+        // Check if budget period overlaps with the month
+        return budgetStart <= monthEndStr && budgetEnd >= monthStartStr;
+      });
+
+      // Join with category information
+      return filteredBudgets.map(budget => {
+        const category = categories.find(c => c.id === budget.category_id);
+        return {
+          ...budget,
+          category_name: category?.name || 'Unknown Category',
+          category_color: category?.color || '#757575',
+          category_icon: category?.icon || 'help-outline'
+        };
+      });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Database query failed:', errorMessage);
-      
-      // Retry for connection-related errors
-      if (retryCount < maxRetries && (
-        errorMessage.includes('NullPointerException') ||
-        errorMessage.includes('prepareAsync') ||
-        errorMessage.includes('Database not connected') ||
-        errorMessage.includes('connection')
-      )) {
-        console.log(`Retrying database query... (attempt ${retryCount + 1}/${maxRetries})`);
-        return this.executeQuery<T>(query, params, type, retryCount + 1);
-      }
-      
-      throw new Error(`Database query failed: ${errorMessage}`);
+      console.error('Failed to get budgets for month:', error);
+      return [];
     }
   }
 
   /**
-   * Get budgets for a specific month with category information
+   * Get monthly spending for a category using DatabaseService
    */
-  private async getBudgetsForMonth(monthStart: Date, monthEnd: Date): Promise<any[]> {
-    const budgets = await this.executeQuery<any>(
-      `SELECT b.*, c.name as category_name, c.color as category_color, c.icon as category_icon
-       FROM budgets b
-       JOIN categories c ON b.category_id = c.id
-       WHERE b.period_start <= ? AND b.period_end >= ?`,
-      [monthEnd.toISOString().split('T')[0], monthStart.toISOString().split('T')[0]],
-      'all'
-    );
+  private async getMonthlySpendingUsingService(categoryId: number, monthStart: Date, monthEnd?: Date): Promise<number> {
+    try {
+      if (!monthEnd) {
+        const month = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+        monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+        monthStart = month;
+      }
 
-    return Array.isArray(budgets) ? budgets : [];
+      const transactions = await this.databaseService.getTransactions(
+        categoryId,
+        'expense',
+        monthStart,
+        monthEnd
+      );
+
+      const total = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+      return total;
+    } catch (error) {
+      console.error('Failed to get monthly spending:', error);
+      return 0;
+    }
   }
 }

@@ -25,6 +25,7 @@ export type RootStackParamList = {
   EditTransaction: {
     transaction: any;
   };
+  Add: undefined;
 };
 
 // Helper type for screens props

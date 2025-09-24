@@ -177,6 +177,15 @@ export const useBudgetAnalytics = (
     if (newPeriod !== currentPeriod) {
       // Clear any existing analytics cache when period changes
       budgetAnalyticsService.clearCache();
+      budgetCalculationService.clearCache();
+
+      // Clear current data to show fresh loading state
+      setMonthlyPerformance([]);
+      setCategoryPerformance([]);
+      setSuccessMetrics(null);
+      setSpendingTrends([]);
+      setInsights([]);
+
       setCurrentPeriod(newPeriod);
       setError(null); // Clear any existing errors
     }

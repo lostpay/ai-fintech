@@ -184,11 +184,10 @@ export class BudgetCalculationService {
    * Clear cache for transaction-related queries (call when transactions change)
    */
   clearTransactionCache(): void {
-    for (const key of this.cache.keys()) {
-      if (key.includes('calculateBudgetProgress') || key.includes('getUnbudgetedSpending')) {
-        this.cache.delete(key);
-      }
-    }
+    const keysToDelete = Array.from(this.cache.keys()).filter(key =>
+      key.includes('calculateBudgetProgress') || key.includes('getUnbudgetedSpending')
+    );
+    keysToDelete.forEach(key => this.cache.delete(key));
   }
 
   // Private helper methods

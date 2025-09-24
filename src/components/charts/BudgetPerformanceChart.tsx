@@ -11,14 +11,13 @@ interface BudgetPerformanceChartProps {
   showDetails?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-
 export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
   data,
   height = 220,
   showDetails = true,
 }) => {
   const theme = useTheme();
+  const screenWidth = Dimensions.get('window').width;
 
   if (!data || data.length === 0) {
     return (
@@ -75,7 +74,7 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
 
       <BarChart
         data={chartData}
-        width={screenWidth - 32}
+        width={screenWidth - 64} // Increased padding for better fit
         height={height}
         yAxisLabel="$"
         yAxisSuffix=""
@@ -87,6 +86,9 @@ export const BudgetPerformanceChart: React.FC<BudgetPerformanceChartProps> = ({
         withInnerLines={true}
         withHorizontalLabels={true}
         style={styles.chart}
+        segments={4}
+        withCustomBarColorFromData={false}
+        flatColor={true}
       />
 
       {showDetails && (

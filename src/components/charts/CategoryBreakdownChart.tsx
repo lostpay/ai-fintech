@@ -13,8 +13,6 @@ interface CategoryBreakdownChartProps {
   showLegend?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-
 export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   data,
   height = 220,
@@ -22,6 +20,7 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
   showLegend = true,
 }) => {
   const theme = useTheme();
+  const screenWidth = Dimensions.get('window').width;
 
   if (!data || data.length === 0) {
     return (
@@ -98,14 +97,15 @@ export const CategoryBreakdownChart: React.FC<CategoryBreakdownChartProps> = ({
 
       <PieChart
         data={pieData}
-        width={screenWidth - 32}
+        width={screenWidth - 64} // Increased padding for better fit
         height={height}
         chartConfig={chartConfig}
         accessor="amount"
         backgroundColor="transparent"
-        paddingLeft="15"
+        paddingLeft="30" // Increased padding
         absolute={false}
         hasLegend={false}
+        center={[(screenWidth - 64) / 4, 0]} // Properly center the pie chart
       />
 
       {showLegend && (
