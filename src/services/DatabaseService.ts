@@ -400,17 +400,19 @@ export class DatabaseService {
    */
   async createBudget(budgetData: CreateBudgetRequest): Promise<Budget> {
     try {
+      console.log('DatabaseService creating budget:', budgetData);
+
       const budget = await this.supabaseService.createBudget({
         category_id: budgetData.category_id,
         amount: budgetData.amount / 100, // Convert to dollars for Supabase
         period_start: budgetData.period_start,
         period_end: budgetData.period_end
       });
-      
+
       if (!budget) {
-        throw new Error('Failed to create budget');
+        throw new Error('Failed to create budget - no data returned');
       }
-      
+
       return {
         ...budget,
         amount: Math.round(budget.amount * 100), // Convert back to cents
@@ -419,9 +421,9 @@ export class DatabaseService {
         created_at: new Date(budget.created_at),
         updated_at: new Date(budget.updated_at)
       };
-    } catch (error) {
-      console.error('Failed to create budget:', error);
-      throw error;
+    } catch (error: any) {
+      console.error('DatabaseService failed to create budget:', error);
+      throw new Error(error.message || 'Failed to create budget');
     }
   }
 

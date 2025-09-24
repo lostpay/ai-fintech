@@ -322,6 +322,14 @@ export class SupabaseService {
 
   async createBudget(budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>): Promise<Budget | null> {
     try {
+      console.log('Creating budget with data:', {
+        category_id: budget.category_id,
+        amount: Math.round(budget.amount * 100), // Convert to cents
+        period_start: budget.period_start,
+        period_end: budget.period_end,
+        user_id: this.userId,
+      });
+
       const { data, error } = await supabase
         .from('budgets')
         .insert({
@@ -334,7 +342,12 @@ export class SupabaseService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error creating budget:', error);
+        throw new Error(`Failed to create budget: ${error.message}`);
+      }
+
+      console.log('Budget created successfully:', data);
 
       return {
         id: data.id,
@@ -345,9 +358,9 @@ export class SupabaseService {
         created_at: data.created_at,
         updated_at: data.updated_at,
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating budget:', error);
-      return null;
+      throw error; // Re-throw with more specific error message
     }
   }
 
