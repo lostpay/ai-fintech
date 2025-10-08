@@ -1,6 +1,8 @@
 """
-RAG (Retrieval-Augmented Generation) Service
-Handles document indexing and semantic search for FAQs and documentation
+RAG (Retrieval-Augmented Generation) Service.
+Provides semantic document search using FAISS vector database and BGE-M3 embeddings.
+Indexes FAQ documents and enables natural language search with multilingual support.
+Uses cosine similarity (Inner Product on normalized vectors) for relevance scoring.
 """
 import os
 import json
@@ -79,7 +81,11 @@ document_store: Dict[int, Document] = {}
 id_to_index: Dict[str, int] = {}
 
 def initialize_model():
-    """Initialize the embedding model"""
+    """
+    Initialize the embedding model for document vectorization.
+    Tries to load BGE-M3 (1024-dim multilingual model) first,
+    falls back to smaller all-MiniLM-L6-v2 (384-dim) if BGE-M3 fails.
+    """
     global embedding_model
     try:
         logger.info(f"Loading embedding model: {EMBEDDING_MODEL}")
@@ -92,15 +98,20 @@ def initialize_model():
         logger.info("Loaded fallback model: all-MiniLM-L6-v2")
 
 def initialize_index():
-    """Initialize or load FAISS index"""
+    """
+    Initialize or load FAISS vector index from disk.
+    Loads existing index, document store, and ID mappings if available.
+    Creates new index with default documents if no existing index found.
+    """
     global faiss_index, document_store, id_to_index
 
     index_path = STORE_PATH / "faiss.index"
     docs_path = STORE_PATH / "documents.pkl"
     mapping_path = STORE_PATH / "id_mapping.pkl"
 
+    # Check if all required files exist
     if index_path.exists() and docs_path.exists() and mapping_path.exists():
-        # Load existing index
+        # Load existing index and metadata from disk
         try:
             faiss_index = faiss.read_index(str(index_path))
             with open(docs_path, "rb") as f:
@@ -112,23 +123,31 @@ def initialize_index():
             logger.error(f"Failed to load existing index: {e}")
             create_new_index()
     else:
+        # No existing index found, create new one
         create_new_index()
 
 def create_new_index():
-    """Create a new FAISS index"""
+    """
+    Create a new FAISS index from scratch.
+    Uses IndexFlatIP for Inner Product (cosine similarity with normalized vectors).
+    Automatically adds default FAQ documents to the new index.
+    """
     global faiss_index, document_store, id_to_index
 
-    # Use Inner Product for BGE-M3 (cosine similarity after normalization)
+    # Inner Product index for cosine similarity (vectors are normalized)
     faiss_index = faiss.IndexFlatIP(VECTOR_DIM)
     document_store = {}
     id_to_index = {}
     logger.info("Created new FAISS index")
 
-    # Add default documents
+    # Populate with default FAQ documents
     add_default_documents()
 
 def save_index():
-    """Save FAISS index and documents to disk"""
+    """
+    Persist FAISS index and document metadata to disk.
+    Saves three files: faiss.index (vectors), documents.pkl (docs), id_mapping.pkl (IDs).
+    """
     try:
         index_path = STORE_PATH / "faiss.index"
         docs_path = STORE_PATH / "documents.pkl"
@@ -144,7 +163,11 @@ def save_index():
         logger.error(f"Failed to save index: {e}")
 
 def add_default_documents():
-    """Add default FAQ and documentation"""
+    """
+    Add default FAQ documents to the index.
+    Includes bilingual (Chinese/English) FAQs covering common topics:
+    expense tracking, budgeting, data export, and category explanations.
+    """
     default_docs = [
         Document(
             id="faq_1",
@@ -187,29 +210,36 @@ def add_default_documents():
         )
     ]
 
-    # Add documents to index
+    # Index all default documents
     for doc in default_docs:
         add_document_to_index(doc)
 
 def add_document_to_index(document: Document):
-    """Add a single document to the index"""
+    """
+    Add a single document to the FAISS index.
+    Combines title and content (including Chinese version if available),
+    generates normalized embeddings, and stores in index with mappings.
+
+    Args:
+        document: Document object to index
+    """
     global faiss_index, document_store, id_to_index
 
     try:
-        # Prepare text for embedding
+        # Combine title and content for embedding
         text = f"{document.title}\n{document.content}"
         if document.content_zh:
-            text += f"\n{document.content_zh}"
+            text += f"\n{document.content_zh}"  # Include Chinese for multilingual search
 
-        # Generate embedding
+        # Generate normalized embedding (required for Inner Product similarity)
         embedding = embedding_model.encode([text], normalize_embeddings=True)
         embedding = np.array(embedding).astype('float32')
 
-        # Add to FAISS index
+        # Add vector to FAISS index
         current_index = faiss_index.ntotal
         faiss_index.add(embedding)
 
-        # Store document and mapping
+        # Store document metadata and create ID mapping
         document_store[current_index] = document
         id_to_index[document.id] = current_index
 
@@ -220,13 +250,19 @@ def add_document_to_index(document: Document):
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize model and index on startup"""
+    """
+    Initialize embedding model and FAISS index on application startup.
+    Ensures all components are ready before accepting requests.
+    """
     initialize_model()
     initialize_index()
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """
+    Health check endpoint for service monitoring.
+    Returns service status, model status, and index size.
+    """
     return {
         "status": "healthy",
         "service": "rag",
@@ -236,35 +272,45 @@ async def health_check():
 
 @app.post("/search", response_model=List[SearchResult])
 async def search(request: SearchRequest):
-    """Search for relevant documents"""
+    """
+    Semantic search endpoint for finding relevant documents.
+    Embeds query, searches FAISS index using cosine similarity,
+    and returns top-k most relevant documents with scores.
+
+    Args:
+        request: SearchRequest with query, language, top_k, and optional category filter
+
+    Returns:
+        List of SearchResult objects with matched documents and scores
+    """
     try:
         if not embedding_model or not faiss_index:
             raise HTTPException(status_code=503, detail="Service not initialized")
 
         logger.info(f"Searching for: {request.query}")
 
-        # Generate query embedding
+        # Convert query to normalized embedding vector
         query_embedding = embedding_model.encode([request.query], normalize_embeddings=True)
         query_embedding = np.array(query_embedding).astype('float32')
 
-        # Search in FAISS
+        # Search FAISS index for nearest neighbors (higher score = more similar)
         distances, indices = faiss_index.search(query_embedding, request.top_k)
 
-        # Prepare results
+        # Build result list from retrieved documents
         results = []
         for idx, distance in zip(indices[0], distances[0]):
-            if idx < 0:  # Invalid index
+            if idx < 0:  # Invalid index from FAISS
                 continue
 
             doc = document_store.get(idx)
             if not doc:
                 continue
 
-            # Filter by category if specified
+            # Apply category filter if specified
             if request.category and doc.category != request.category:
                 continue
 
-            # Use appropriate content based on language
+            # Select appropriate language version
             content = doc.content_zh if request.lang == "zh" and doc.content_zh else doc.content
 
             results.append(SearchResult(
@@ -285,11 +331,22 @@ async def search(request: SearchRequest):
 
 @app.post("/ingest")
 async def ingest_documents(request: IngestRequest):
-    """Ingest new documents into the index"""
+    """
+    Batch ingest new documents into the index.
+    Processes multiple documents, generates embeddings, and updates FAISS index.
+    Persists index to disk after batch completion.
+
+    Args:
+        request: IngestRequest with list of documents
+
+    Returns:
+        Dictionary with success/failure counts and failed document IDs
+    """
     try:
         success_count = 0
         failed_ids = []
 
+        # Process each document individually
         for doc in request.documents:
             try:
                 add_document_to_index(doc)
@@ -298,7 +355,7 @@ async def ingest_documents(request: IngestRequest):
                 logger.error(f"Failed to ingest document {doc.id}: {e}")
                 failed_ids.append(doc.id)
 
-        # Save index after batch ingestion
+        # Persist updated index to disk
         save_index()
 
         return {
@@ -314,7 +371,16 @@ async def ingest_documents(request: IngestRequest):
 
 @app.post("/ingest/file")
 async def ingest_file(file: UploadFile = File(...)):
-    """Ingest documents from uploaded file (JSON format)"""
+    """
+    Ingest documents from uploaded JSON file.
+    Expects JSON array of document objects matching Document schema.
+
+    Args:
+        file: Uploaded JSON file
+
+    Returns:
+        Ingestion result with success/failure counts
+    """
     try:
         content = await file.read()
         data = json.loads(content)
@@ -335,15 +401,23 @@ async def ingest_file(file: UploadFile = File(...)):
 
 @app.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):
-    """Delete a document from the index"""
+    """
+    Delete a document from the index.
+    Note: FAISS doesn't support true deletion, so document is only removed from
+    document_store and id_to_index mappings. Vector remains in FAISS index.
+    For complete removal, index would need to be rebuilt.
+
+    Args:
+        doc_id: Document ID to delete
+
+    Returns:
+        Confirmation message
+    """
     try:
         if doc_id not in id_to_index:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Note: FAISS doesn't support deletion directly
-        # We'd need to rebuild the index without this document
-        # For now, just mark it as deleted in our store
-
+        # Remove from metadata stores (vector stays in FAISS)
         index = id_to_index[doc_id]
         if index in document_store:
             del document_store[index]
@@ -358,7 +432,10 @@ async def delete_document(doc_id: str):
 
 @app.get("/stats")
 async def get_stats():
-    """Get index statistics"""
+    """
+    Get index statistics for monitoring.
+    Returns total documents, available categories, model name, and vector dimension.
+    """
     return {
         "total_documents": faiss_index.ntotal if faiss_index else 0,
         "categories": list(set(doc.category for doc in document_store.values())),

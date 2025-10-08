@@ -1,5 +1,6 @@
 """
-Intelligent Budget Generation Module
+Budget Generation Module.
+Creates personalized monthly budgets based on spending history and behavioral patterns.
 """
 
 import pandas as pd
@@ -12,68 +13,66 @@ logger = logging.getLogger(__name__)
 
 class BudgetGenerator:
     """
-    Generate personalized budgets with category floors and elasticity
+    Generates adaptive budgets using historical spending data, activity levels,
+    and spending elasticity to create realistic recommendations.
     """
 
     def __init__(self):
-        # Category spending floors (minimum recommended amounts in NT$)
+        # Minimum recommended spending per category (daily amounts)
         self.category_floors = {
-            'Food': 800,  # NT$800 minimum
-            'Transport': 200,  # NT$200 minimum
-            'Home': 100,  # NT$100 minimum
+            'Food': 800,
+            'Transport': 200,
+            'Home': 100,
             'Personal': 50,
-            'Bills': 0,  # Bills are fixed
+            'Bills': 0,
             'Beverage': 100,
-            'Shopping': 0,  # Discretionary
-            'Entertainment': 0,  # Discretionary
-            'Beauty': 0,  # Discretionary
-            'Sports': 0,  # Discretionary
+            'Shopping': 0,
+            'Entertainment': 0,
+            'Beauty': 0,
+            'Sports': 0,
             'Work': 50,
             'Other': 50,
-            'Travel': 0  # Discretionary
+            'Travel': 0
         }
 
-        # Elasticity factors (how easy to cut spending)
-        # <1: harder to cut (essential), >1: easier to cut (discretionary)
+        # Elasticity factors (ease of reducing spending)
+        # < 1: essential (hard to cut), > 1: discretionary (easy to cut)
         self.elasticity_factors = {
-            'Food': 0.6,  # Essential, hard to cut
-            'Transport': 0.7,  # Essential for commute
-            'Home': 0.8,  # Somewhat essential
-            'Bills': 0.0,  # Fixed, cannot cut
+            'Food': 0.6,
+            'Transport': 0.7,
+            'Home': 0.8,
+            'Bills': 0.0,
             'Personal': 0.9,
             'Work': 0.8,
-            'Beverage': 1.1,  # Somewhat discretionary
-            'Shopping': 1.5,  # Very discretionary
-            'Entertainment': 1.4,  # Discretionary
-            'Beauty': 1.3,  # Discretionary
-            'Sports': 1.2,  # Discretionary
-            'Other': 1.0,  # Neutral
-            'Travel': 1.6  # Most discretionary
+            'Beverage': 1.1,
+            'Shopping': 1.5,
+            'Entertainment': 1.4,
+            'Beauty': 1.3,
+            'Sports': 1.2,
+            'Other': 1.0,
+            'Travel': 1.6
         }
 
-        # Activity thresholds
+        # Activity level thresholds (percentage of days with spending)
         self.activity_thresholds = {
-            'inactive': 0.1,  # <10% of days have spending
-            'occasional': 0.3,  # 10-30% of days
-            'regular': 1.0  # >30% of days
+            'inactive': 0.1,
+            'occasional': 0.3,
+            'regular': 1.0
         }
 
     def generate_budget(self, df: pd.DataFrame, patterns: Dict,
                        target_month: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Generate personalized budget recommendations
+        Generate comprehensive budget with category breakdowns.
+        Uses historical statistics, activity levels, and detected patterns.
         """
         try:
             if target_month is None:
                 target_month = datetime.now()
 
-            # Calculate historical spending statistics
+            # Analyze historical spending
             spending_stats = self._calculate_spending_stats(df)
-
-            # Determine activity levels for each category
             activity_levels = self._determine_activity_levels(df)
-
-            # Get pattern-based adjustments
             pattern_adjustments = self._get_pattern_adjustments(patterns)
 
             # Generate budget for each category
@@ -90,14 +89,13 @@ class BudgetGenerator:
                 category_budgets.append(budget_info)
                 total_budget += budget_info['amount']
 
-            # Sort categories by budget amount
+            # Sort by budget amount descending
             category_budgets = sorted(
                 category_budgets,
                 key=lambda x: x['amount'],
                 reverse=True
             )
 
-            # Generate methodology explanation
             methodology = self._generate_methodology(
                 spending_stats,
                 activity_levels,
@@ -118,11 +116,10 @@ class BudgetGenerator:
 
     def _calculate_spending_stats(self, df: pd.DataFrame) -> Dict[str, Dict]:
         """
-        Calculate spending statistics for each category
+        Compute statistical measures for each spending category.
+        Returns mean, median, volatility, trends, and activity metrics.
         """
         stats = {}
-
-        # Get category columns
         categories = [col for col in df.columns if col in self.category_floors.keys()]
 
         for category in categories:
@@ -131,7 +128,6 @@ class BudgetGenerator:
 
             cat_data = df[category].dropna()
 
-            # Calculate statistics
             stats[category] = {
                 'mean': cat_data.mean(),
                 'median': cat_data.median(),
@@ -151,10 +147,10 @@ class BudgetGenerator:
 
     def _determine_activity_levels(self, df: pd.DataFrame) -> Dict[str, str]:
         """
-        Determine activity level for each category
+        Classify spending frequency for each category.
+        Returns 'inactive', 'occasional', or 'regular' based on activity rate.
         """
         activity_levels = {}
-
         categories = [col for col in df.columns if col in self.category_floors.keys()]
 
         for category in categories:
@@ -175,34 +171,32 @@ class BudgetGenerator:
 
     def _get_pattern_adjustments(self, patterns: Dict) -> Dict[str, float]:
         """
-        Get budget adjustments based on detected patterns
+        Calculate budget multipliers based on spending patterns.
+        Increases budget for volatile or recurring expenses.
         """
         adjustments = {}
 
-        # Adjust for recurrence patterns
+        # Adjust for recurring expenses
         if 'recurrences' in patterns:
             for recurrence in patterns['recurrences']:
                 category = recurrence.get('category', 'total')
                 frequency = recurrence.get('frequency', 1.0)
 
-                # Increase budget for frequent recurring expenses
-                if frequency > 0.7:  # >70% chance of recurrence
-                    adjustments[category] = 1.1  # 10% buffer
+                if frequency > 0.7:
+                    adjustments[category] = 1.1
 
-        # Adjust for volatility
+        # Add buffer for high volatility
         if 'volatility' in patterns:
             for category, volatility in patterns['volatility'].items():
-                if volatility > 0.5:  # High volatility
-                    # Add buffer for volatile categories
+                if volatility > 0.5:
                     current_adj = adjustments.get(category, 1.0)
                     adjustments[category] = current_adj * 1.15
 
-        # Adjust for spikes
+        # Increase for recent spending spikes
         if 'spikes' in patterns:
             for spike in patterns['spikes']:
                 category = spike.get('category', 'total')
-                if spike.get('recent', False):  # Recent spike
-                    # Temporary increase for recent spikes
+                if spike.get('recent', False):
                     current_adj = adjustments.get(category, 1.0)
                     adjustments[category] = current_adj * 1.2
 
@@ -211,28 +205,25 @@ class BudgetGenerator:
     def _calculate_category_budget(self, category: str, stats: Dict,
                                   activity_level: str, pattern_adjustment: float) -> Dict:
         """
-        Calculate budget for a specific category
+        Compute recommended budget for a single category.
+        Applies activity-based baseline, elasticity adjustments, and pattern buffers.
         """
-        # Start with base amount based on activity level
+        # Set baseline based on activity level
         if activity_level == 'inactive':
             base_amount = 0
         elif activity_level == 'occasional':
-            # Use median for occasional spending
-            base_amount = stats['median'] * 30  # Monthly projection
+            base_amount = stats['median'] * 30
         else:
-            # Use weighted average of mean and 75th percentile for regular spending
             base_amount = (0.7 * stats['mean'] + 0.3 * stats['percentile_75']) * 30
 
-        # Apply floor constraint
+        # Apply minimum floor
         floor = self.category_floors.get(category, 0)
         base_amount = max(base_amount, floor)
 
-        # Apply elasticity-based adjustment
+        # Apply elasticity for overspending categories
         elasticity = self.elasticity_factors.get(category, 1.0)
-
-        # If spending is above historical average, apply elasticity to suggest cuts
         if base_amount > stats['mean'] * 30 and elasticity > 1:
-            reduction_factor = 1 - (0.1 * (elasticity - 1))  # Up to 10% reduction for elastic categories
+            reduction_factor = 1 - (0.1 * (elasticity - 1))
             base_amount *= reduction_factor
 
         # Apply pattern-based adjustments
@@ -240,13 +231,13 @@ class BudgetGenerator:
 
         # Apply trend adjustment
         trend = stats.get('recent_trend', 0)
-        if trend > 0:  # Increasing trend
-            base_amount *= (1 + min(trend, 0.1))  # Cap at 10% increase
+        if trend > 0:
+            base_amount *= (1 + min(trend, 0.1))
 
         # Add volatility buffer
-        if stats['std'] > stats['mean'] * 0.5:  # High volatility
-            volatility_buffer = stats['std'] * 2  # 2 standard deviations
-            base_amount += volatility_buffer * 0.1  # Add 10% of volatility as buffer
+        if stats['std'] > stats['mean'] * 0.5:
+            volatility_buffer = stats['std'] * 2
+            base_amount += volatility_buffer * 0.1
 
         # Round to nearest 10
         final_amount = round(base_amount / 10) * 10
@@ -263,7 +254,8 @@ class BudgetGenerator:
 
     def _calculate_trend(self, series: pd.Series, window: int = 14) -> float:
         """
-        Calculate recent trend in spending
+        Calculate percentage change in recent vs previous spending.
+        Compares last window days to previous window days.
         """
         if len(series) < window:
             return 0
@@ -278,37 +270,34 @@ class BudgetGenerator:
 
     def _calculate_confidence(self, df: pd.DataFrame) -> float:
         """
-        Calculate overall budget confidence
+        Estimate confidence level based on data availability.
+        More days of history yields higher confidence.
         """
-        # Base confidence on data availability
         days_of_data = len(df)
 
         if days_of_data < 30:
-            confidence = 0.5  # Low confidence
+            confidence = 0.5
         elif days_of_data < 60:
-            confidence = 0.7  # Medium confidence
+            confidence = 0.7
         elif days_of_data < 90:
-            confidence = 0.85  # Good confidence
+            confidence = 0.85
         else:
-            confidence = 0.95  # High confidence
+            confidence = 0.95
 
         return confidence
 
     def _calculate_category_confidence(self, stats: Dict, activity_level: str) -> float:
         """
-        Calculate confidence for category budget
+        Estimate confidence for individual category budget.
+        Based on activity level and spending consistency (coefficient of variation).
         """
-        # Base confidence on activity level and consistency
         if activity_level == 'inactive':
-            return 0.9  # High confidence it will remain low/zero
+            return 0.9
         elif activity_level == 'occasional':
-            # Lower confidence for sporadic spending
             return 0.6
         else:
-            # Calculate based on coefficient of variation
             if stats['mean'] > 0:
                 cv = stats['std'] / stats['mean']
-                # Higher CV = lower confidence
                 confidence = max(0.5, 1 - (cv * 0.3))
             else:
                 confidence = 0.7
@@ -318,7 +307,8 @@ class BudgetGenerator:
     def _generate_methodology(self, stats: Dict, activity_levels: Dict,
                              adjustments: Dict) -> Dict[str, Any]:
         """
-        Generate explanation of budget methodology
+        Create explanation of how budget was calculated.
+        Documents factors considered and constraints applied.
         """
         return {
             'approach': 'Adaptive ML-based budgeting',
@@ -344,13 +334,11 @@ class BudgetGenerator:
 
     def get_default_budgets(self) -> List[Dict]:
         """
-        Get default budget recommendations for new users
+        Provide default budget recommendations for new users with no history.
+        Returns typical monthly allocations across all categories.
         """
-        default_budgets = []
-
-        # Basic monthly budget allocation
         default_amounts = {
-            'Food': 5000,  # NT$5000 monthly
+            'Food': 5000,
             'Transport': 1500,
             'Home': 1000,
             'Shopping': 2000,
@@ -365,6 +353,7 @@ class BudgetGenerator:
             'Travel': 0
         }
 
+        default_budgets = []
         for category, amount in default_amounts.items():
             default_budgets.append({
                 'category': category,
@@ -381,7 +370,8 @@ class BudgetGenerator:
     def adjust_budget_for_goal(self, current_budget: Dict,
                                savings_goal: float) -> Dict[str, Any]:
         """
-        Adjust budget to meet savings goal
+        Reduce spending to meet a savings target.
+        Prioritizes cuts in elastic (discretionary) categories first.
         """
         categories = current_budget['categories'].copy()
         total = current_budget['total']
@@ -389,10 +379,9 @@ class BudgetGenerator:
         if savings_goal <= 0:
             return current_budget
 
-        # Calculate required reduction
         required_reduction = savings_goal
 
-        # Sort categories by elasticity (most elastic first)
+        # Sort by elasticity (most elastic first for easier cuts)
         elastic_categories = sorted(
             categories,
             key=lambda x: self.elasticity_factors.get(x['category'], 1.0),
@@ -407,7 +396,7 @@ class BudgetGenerator:
             floor = self.category_floors.get(cat['category'], 0)
 
             if elasticity > 0 and cat['amount'] > floor:
-                # Calculate maximum possible reduction
+                # Calculate maximum possible reduction without going below floor
                 max_reduction = cat['amount'] - floor
 
                 # Apply elasticity-weighted reduction

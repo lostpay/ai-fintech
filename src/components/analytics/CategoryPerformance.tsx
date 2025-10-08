@@ -239,11 +239,10 @@ export const CategoryPerformance: React.FC<CategoryPerformanceProps> = ({ catego
                 </View>
               </View>
 
-              {/* Recommendations */}
               {category.recommendations && category.recommendations.length > 0 && (
                 <View style={styles.recommendations}>
                   <Text variant="labelMedium" style={styles.recommendationsTitle}>
-                    💡 Insights:
+                    Insights:
                   </Text>
                   {category.recommendations.slice(0, 2).map((rec, index) => (
                     <Text key={index} variant="bodySmall" style={styles.recommendation}>

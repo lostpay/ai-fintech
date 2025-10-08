@@ -28,7 +28,7 @@ interface Message {
 // Get the chatbot URL from environment
 const CHATBOT_URL = Constants.expoConfig?.extra?.chatbotApiUrl ||
                    process.env.EXPO_PUBLIC_CHATBOT_API_URL ||
-                   'http://192.168.1.103:7000';
+                   'http://192.168.1.102:7000';
 
 export default function SimpleChatScreen() {
   const navigation = useNavigation();

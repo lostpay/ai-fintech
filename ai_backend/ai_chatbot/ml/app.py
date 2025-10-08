@@ -1,5 +1,6 @@
 """
-ML Forecasting & Budgeting Microservice
+ML Forecasting & Budgeting Microservice.
+Provides spending predictions, budget recommendations, pattern analysis, and overspending detection.
 Port: 7003
 """
 
@@ -28,17 +29,14 @@ from ml.pattern_detector import PatternDetector
 from ml.data_processor import DataProcessor
 from ml.forecaster import FinanceForecaster
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
 app = FastAPI(title="ML Forecasting Service", version="1.0.0")
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,28 +45,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
+# Initialize ML service components
 supabase = SupabaseService()
 data_processor = DataProcessor()
 predictor = SpendingPredictor()
-budget_generator = BudgetGenerator()  # Keep old one for compatibility
-advanced_budget_generator = AdvancedBudgetGenerator()  # New notebook-based generator
+budget_generator = BudgetGenerator()
+advanced_budget_generator = AdvancedBudgetGenerator()
 pattern_detector = PatternDetector()
-forecaster = FinanceForecaster()  # New fixed forecaster
+forecaster = FinanceForecaster()
 
-# Cache for predictions (15 minutes TTL)
+# Prediction cache with 15 minute TTL
 prediction_cache = {}
-CACHE_TTL = 900  # 15 minutes in seconds
+CACHE_TTL = 900
 
-# Request/Response models
+# API request models
 class PredictionRequest(BaseModel):
     user_id: str
-    timeframe: str = "weekly"  # daily, weekly, monthly
-    horizon: Optional[int] = None  # number of periods to predict
+    timeframe: str = "weekly"
+    horizon: Optional[int] = None
 
 class BudgetRequest(BaseModel):
     user_id: str
-    month: Optional[str] = None  # YYYY-MM format
+    month: Optional[str] = None
 
 class PatternRequest(BaseModel):
     user_id: str
@@ -78,6 +76,7 @@ class OverspendingRequest(BaseModel):
     user_id: str
     budget_total: Optional[float] = None
 
+# API response models
 class PredictionResponse(BaseModel):
     predictions: List[Dict[str, Any]]
     confidence: float
@@ -106,11 +105,11 @@ class OverspendingResponse(BaseModel):
     confidence: float
 
 def get_cache_key(user_id: str, operation: str, params: str = "") -> str:
-    """Generate cache key"""
+    """Generate unique cache key for user and operation"""
     return f"{user_id}:{operation}:{params}"
 
 def is_cache_valid(cache_entry: Dict) -> bool:
-    """Check if cache entry is still valid"""
+    """Check if cached result is still within TTL window"""
     if not cache_entry:
         return False
     cached_time = datetime.fromisoformat(cache_entry['timestamp'])
@@ -118,7 +117,7 @@ def is_cache_valid(cache_entry: Dict) -> bool:
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint for service monitoring"""
     return {
         "status": "healthy",
         "service": "ML Forecasting",
@@ -129,19 +128,20 @@ async def health_check():
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_spending(request: PredictionRequest):
     """
-    Predict future spending based on historical patterns
+    Generate spending predictions based on historical transaction patterns.
+    Uses advanced forecaster for daily/weekly predictions with fallback to basic predictor.
     """
     try:
-        # Check cache
+        # Check cache first
         cache_key = get_cache_key(request.user_id, "predict", request.timeframe)
         if cache_key in prediction_cache and is_cache_valid(prediction_cache[cache_key]):
             logger.info(f"Returning cached prediction for user {request.user_id}")
             return prediction_cache[cache_key]['data']
 
-        # Get user's transaction history
+        # Fetch user transaction history
         transactions = await supabase.get_user_transactions(
             request.user_id,
-            days_back=120  # Get 4 months of data for training
+            days_back=120
         )
 
         if not transactions:
@@ -150,7 +150,7 @@ async def predict_spending(request: PredictionRequest):
                 detail="No transaction history found for predictions"
             )
 
-        # Check data requirements based on timeframe
+        # Validate sufficient data for requested timeframe
         if request.timeframe == "monthly" and len(transactions) < 30:
             return PredictionResponse(
                 predictions=[],
@@ -165,10 +165,9 @@ async def predict_spending(request: PredictionRequest):
                 detail="Insufficient transaction history for predictions (need at least 14 days)"
             )
 
-        # Process data
         df = pd.DataFrame(transactions)
 
-        # Try new forecaster first for better predictions
+        # Try advanced forecaster first for improved accuracy
         use_fallback = False
         try:
             if request.timeframe in ['daily', 'weekly']:
@@ -178,7 +177,7 @@ async def predict_spending(request: PredictionRequest):
                 )
 
                 if not forecast_output.daily_forecast.empty:
-                    # Use forecaster results
+                    # Format daily predictions
                     if request.timeframe == 'daily':
                         predictions = [
                             {
@@ -190,7 +189,8 @@ async def predict_spending(request: PredictionRequest):
                             }
                             for _, row in forecast_output.daily_forecast.head(request.horizon or 7).iterrows()
                         ]
-                    else:  # weekly
+                    else:
+                        # Format weekly predictions
                         predictions = [
                             {
                                 'week_start': (row['week_end'] - pd.Timedelta(days=6)).isoformat() if pd.notna(row.get('week_end')) else '',
@@ -203,7 +203,6 @@ async def predict_spending(request: PredictionRequest):
                             for _, row in forecast_output.weekly_report.iterrows()
                         ]
 
-                    # Return immediately with forecaster results
                     response = PredictionResponse(
                         predictions=predictions[:request.horizon or (7 if request.timeframe == 'daily' else 4)],
                         confidence=forecast_output.confidence,
@@ -212,13 +211,12 @@ async def predict_spending(request: PredictionRequest):
                         generated_at=datetime.now().isoformat()
                     )
 
-                    # Cache the response
+                    # Cache and store results
                     prediction_cache[cache_key] = {
                         'timestamp': datetime.now().isoformat(),
                         'data': response
                     }
 
-                    # Store predictions in database
                     await supabase.store_predictions(
                         user_id=request.user_id,
                         predictions=predictions,
@@ -230,60 +228,59 @@ async def predict_spending(request: PredictionRequest):
                 else:
                     use_fallback = True
             else:
-                use_fallback = True  # Monthly uses old approach
+                use_fallback = True
         except Exception as e:
             logger.warning(f"Forecaster failed, using fallback: {str(e)}")
             use_fallback = True
 
-        # Fallback to old approach if needed
+        # Fallback to basic predictor if advanced forecaster fails
         if use_fallback:
             processed_data = data_processor.prepare_features(df)
 
-        # Train model if it doesn't exist
-        import os
-        model_file = os.path.join(predictor.model_path, 'spending_predictor.joblib')
-        if not os.path.exists(model_file):
-            logger.info(f"No trained model found. Training model for user {request.user_id}...")
-            try:
-                predictor.train(processed_data)
-                logger.info("Model trained successfully")
-            except Exception as train_error:
-                logger.error(f"Failed to train model: {train_error}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Model training failed: {str(train_error)}"
-                )
+            # Train model if not exists
+            import os
+            model_file = os.path.join(predictor.model_path, 'spending_predictor.joblib')
+            if not os.path.exists(model_file):
+                logger.info(f"No trained model found. Training model for user {request.user_id}...")
+                try:
+                    predictor.train(processed_data)
+                    logger.info("Model trained successfully")
+                except Exception as train_error:
+                    logger.error(f"Failed to train model: {train_error}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Model training failed: {str(train_error)}"
+                    )
 
-        # Generate predictions
-        predictions, confidence, drivers = predictor.predict(
-            processed_data,
-            timeframe=request.timeframe,
-            horizon=request.horizon or (7 if request.timeframe == "daily" else 4)
-        )
+            # Generate predictions using basic predictor
+            predictions, confidence, drivers = predictor.predict(
+                processed_data,
+                timeframe=request.timeframe,
+                horizon=request.horizon or (7 if request.timeframe == "daily" else 4)
+            )
 
-        response = PredictionResponse(
-            predictions=predictions,
-            confidence=confidence,
-            drivers=drivers,
-            timeframe=request.timeframe,
-            generated_at=datetime.now().isoformat()
-        )
+            response = PredictionResponse(
+                predictions=predictions,
+                confidence=confidence,
+                drivers=drivers,
+                timeframe=request.timeframe,
+                generated_at=datetime.now().isoformat()
+            )
 
-        # Cache the response
-        prediction_cache[cache_key] = {
-            'timestamp': datetime.now().isoformat(),
-            'data': response
-        }
+            # Cache and store
+            prediction_cache[cache_key] = {
+                'timestamp': datetime.now().isoformat(),
+                'data': response
+            }
 
-        # Store predictions in database
-        await supabase.store_predictions(
-            user_id=request.user_id,
-            predictions=predictions,
-            timeframe=request.timeframe,
-            confidence=confidence
-        )
+            await supabase.store_predictions(
+                user_id=request.user_id,
+                predictions=predictions,
+                timeframe=request.timeframe,
+                confidence=confidence
+            )
 
-        return response
+            return response
 
     except Exception as e:
         logger.error(f"Prediction error for user {request.user_id}: {str(e)}")
@@ -291,11 +288,9 @@ async def predict_spending(request: PredictionRequest):
 
 @app.post("/budget", response_model=BudgetResponse)
 async def recommend_budget(request: BudgetRequest):
-    """
-    Generate personalized budget recommendations
-    """
+    """Generate personalized budget recommendations based on spending history"""
     try:
-        # Determine target month
+        # Parse target month
         if request.month:
             target_date = datetime.strptime(request.month, "%Y-%m")
         else:
@@ -307,14 +302,14 @@ async def recommend_budget(request: BudgetRequest):
             logger.info(f"Returning cached budget for user {request.user_id}")
             return prediction_cache[cache_key]['data']
 
-        # Get user's transaction history
+        # Fetch transaction history
         transactions = await supabase.get_user_transactions(
             request.user_id,
             days_back=90
         )
 
         if not transactions:
-            # Return default budget for new users using advanced generator
+            # Provide default budget for new users
             default_budget = advanced_budget_generator._get_default_monthly_budget()
             return BudgetResponse(
                 categories=default_budget['categories'],
@@ -323,21 +318,18 @@ async def recommend_budget(request: BudgetRequest):
                 methodology={"type": "default", "reason": "new_user"}
             )
 
-        # Process data
+        # Process and analyze transaction data
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
-
-        # Detect patterns for budget adjustment
         patterns = pattern_detector.detect_patterns(processed_data)
 
-        # Generate budget recommendations using advanced generator
-        # Determine if weekly or monthly budget
-        if target_date.day == 1:  # Start of month - generate monthly
+        # Generate budget using advanced generator
+        if target_date.day == 1:
             budget_data = advanced_budget_generator.generate_monthly_budget(processed_data)
-        else:  # Generate weekly by default
+        else:
             budget_data = advanced_budget_generator.generate_weekly_budget(processed_data)
 
-        # Ensure compatibility with expected format
+        # Fallback to basic generator if advanced fails
         if 'categories' not in budget_data:
             budget_data = budget_generator.generate_budget(
                 processed_data,
@@ -352,13 +344,12 @@ async def recommend_budget(request: BudgetRequest):
             methodology=budget_data.get('methodology', {})
         )
 
-        # Cache the response
+        # Cache and store
         prediction_cache[cache_key] = {
             'timestamp': datetime.now().isoformat(),
             'data': response
         }
 
-        # Store budget in database
         await supabase.store_budget(
             user_id=request.user_id,
             budget_data=budget_data,
@@ -373,9 +364,7 @@ async def recommend_budget(request: BudgetRequest):
 
 @app.post("/patterns", response_model=PatternResponse)
 async def analyze_patterns(request: PatternRequest):
-    """
-    Analyze spending patterns and behaviors
-    """
+    """Identify recurring expenses, spending spikes, and behavior patterns"""
     try:
         # Check cache
         cache_key = get_cache_key(request.user_id, "patterns", str(request.lookback_days))
@@ -383,7 +372,7 @@ async def analyze_patterns(request: PatternRequest):
             logger.info(f"Returning cached patterns for user {request.user_id}")
             return prediction_cache[cache_key]['data']
 
-        # Get transaction history
+        # Fetch transaction history
         transactions = await supabase.get_user_transactions(
             request.user_id,
             days_back=request.lookback_days
@@ -395,14 +384,10 @@ async def analyze_patterns(request: PatternRequest):
                 detail="Insufficient data for pattern analysis (need at least 14 days)"
             )
 
-        # Process data
+        # Process and analyze patterns
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
-
-        # Detect patterns
         patterns = pattern_detector.detect_patterns(processed_data)
-
-        # Generate insights
         insights = pattern_detector.generate_insights(patterns)
 
         response = PatternResponse(
@@ -413,13 +398,12 @@ async def analyze_patterns(request: PatternRequest):
             insights=insights
         )
 
-        # Cache the response
+        # Cache and store
         prediction_cache[cache_key] = {
             'timestamp': datetime.now().isoformat(),
             'data': response
         }
 
-        # Store patterns in database
         await supabase.store_patterns(
             user_id=request.user_id,
             patterns=patterns
@@ -433,11 +417,9 @@ async def analyze_patterns(request: PatternRequest):
 
 @app.post("/overspending", response_model=OverspendingResponse)
 async def check_overspending(request: OverspendingRequest):
-    """
-    Check if user is likely to overspend based on predictions and budget
-    """
+    """Predict likelihood of exceeding budget based on spending trends"""
     try:
-        # Get user's transaction history
+        # Fetch transaction history
         transactions = await supabase.get_user_transactions(
             request.user_id,
             days_back=90
@@ -452,14 +434,10 @@ async def check_overspending(request: OverspendingRequest):
                 confidence=0.3
             )
 
-        # Process data
+        # Process and check overspending
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
-
-        # Get budget data if provided
         budget_data = {'total': request.budget_total} if request.budget_total else None
-
-        # Check overspending
         result = predictor.check_overspending(processed_data, budget_data)
 
         return OverspendingResponse(
@@ -476,11 +454,9 @@ async def check_overspending(request: OverspendingRequest):
 
 @app.post("/train")
 async def train_model(user_id: str):
-    """
-    Trigger model retraining for a specific user
-    """
+    """Trigger model retraining with latest transaction data"""
     try:
-        # Get all available transaction data
+        # Fetch full transaction history
         transactions = await supabase.get_user_transactions(user_id, days_back=365)
 
         if not transactions or len(transactions) < 30:
@@ -489,19 +465,17 @@ async def train_model(user_id: str):
                 detail="Insufficient data for training (need at least 30 days)"
             )
 
-        # Process and train
+        # Train predictor model
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
-
-        # Train predictor
         metrics = predictor.train(processed_data)
 
-        # Clear cache for this user
+        # Clear user's cache entries
         keys_to_remove = [k for k in prediction_cache.keys() if k.startswith(f"{user_id}:")]
         for key in keys_to_remove:
             del prediction_cache[key]
 
-        # Store model metadata
+        # Store training metadata
         await supabase.store_model_metadata(
             user_id=user_id,
             metrics=metrics,
@@ -520,17 +494,13 @@ async def train_model(user_id: str):
 
 @app.post("/clear-cache")
 async def clear_cache(user_id: Optional[str] = None):
-    """
-    Clear prediction cache
-    """
+    """Clear prediction cache for specific user or entire cache"""
     if user_id:
-        # Clear cache for specific user
         keys_to_remove = [k for k in prediction_cache.keys() if k.startswith(f"{user_id}:")]
         for key in keys_to_remove:
             del prediction_cache[key]
         return {"status": "success", "cleared": len(keys_to_remove)}
     else:
-        # Clear all cache
         count = len(prediction_cache)
         prediction_cache.clear()
         return {"status": "success", "cleared": count}

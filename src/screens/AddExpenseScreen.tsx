@@ -1,6 +1,7 @@
 /**
- * AddExpenseScreen - Material Design 3 Professional Expense Entry
- * Implements Story 2.3 requirements for Material Design expense form
+ * AddExpenseScreen
+ * Material Design 3 compliant expense entry form with real-time validation,
+ * budget alerts, and success feedback animations.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -34,7 +35,7 @@ import { BudgetAlert as BudgetAlertType } from '../types/BudgetAlert';
 import { useTheme } from '../context/ThemeContext';
 import { BudgetAlert } from '../components/alerts/BudgetAlert';
 
-// Success Feedback Component
+// Success feedback overlay component displayed after successful expense submission
 interface SuccessFeedbackProps {
   visible: boolean;
   message: string;
@@ -43,11 +44,11 @@ interface SuccessFeedbackProps {
 
 const SuccessFeedback: React.FC<SuccessFeedbackProps> = ({ visible, message, onDismiss }) => {
   if (!visible) return null;
-  
+
   return (
     <View style={styles.successContainer}>
       <View style={styles.successCard}>
-        <Text style={styles.successIcon}>✅</Text>
+        <Text style={styles.successIcon}>[OK]</Text>
         <Text style={styles.successText}>{message}</Text>
       </View>
     </View>
@@ -61,24 +62,21 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   const navigation = useNavigation();
   const { theme } = useTheme();
   
-  // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
-  
-  // Success feedback state
+
   const [successVisible, setSuccessVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  
-  // Budget alerts state
+
   const [showAlerts, setShowAlerts] = useState(false);
   const [currentAlerts, setCurrentAlerts] = useState<BudgetAlertType[]>([]);
-  
-  // Animation values for alerts overlay
+
+  // Animation values for slide-up alerts panel
   const slideUpAnim = useRef(new Animated.Value(500)).current;
   const fadeInAnim = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Keep track of shown alert IDs to prevent infinite loops
+
+  // Track which alerts have been shown to prevent duplicates
   const shownAlertIds = useRef(new Set<string>()).current;
   
   // Database service
@@ -87,7 +85,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   // Budget alerts hook
   const { alerts } = useBudgetAlerts();
   
-  // Form hook with success/error handlers
+  // Initialize form with callbacks for success and error handling
   const {
     formData,
     errors,
@@ -100,7 +98,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
       setSuccessMessage(message);
       setSuccessVisible(true);
 
-      // Navigate back after showing success message
       setTimeout(() => {
         setSuccessVisible(false);
         navigation.goBack();
@@ -112,26 +109,22 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
   });
 
 
-  // Load categories on mount
-  // Watch for new alerts after expense submission
+  // Monitor for new budget alerts after expense submission
   useEffect(() => {
-    // Get the most recent alerts (they will be ordered by created_at)
-    const recentAlerts = alerts.slice(-3); // Show up to 3 most recent alerts
-    
+    const recentAlerts = alerts.slice(-3);
+
     if (recentAlerts.length > 0 && !loading && !successVisible) {
-      // Only show alerts that haven't been shown yet
-      const newAlerts = recentAlerts.filter(alert => 
+      const newAlerts = recentAlerts.filter(alert =>
         !shownAlertIds.has(alert.id)
       );
-      
+
       if (newAlerts.length > 0) {
-        // Mark these alerts as shown
         newAlerts.forEach(alert => shownAlertIds.add(alert.id));
-        
+
         setCurrentAlerts(newAlerts);
         setShowAlerts(true);
-        
-        // Animate alerts in
+
+        // Animate alerts panel into view
         Animated.parallel([
           Animated.timing(slideUpAnim, {
             toValue: 0,
@@ -149,8 +142,8 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
             useNativeDriver: true,
           }),
         ]).start();
-        
-        // Auto-hide alerts after 5 seconds unless they're critical
+
+        // Auto-dismiss non-critical alerts after 5 seconds
         const hasError = newAlerts.some(alert => alert.severity === 'error');
         if (!hasError) {
           setTimeout(() => {
@@ -164,6 +157,7 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     }
   }, [alerts, loading, successVisible, slideUpAnim, fadeInAnim, backdropOpacity]);
 
+  // Load expense categories on component mount
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -179,15 +173,14 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     };
 
     loadCategories();
-
-    // Note: No cleanup needed for singleton database service
   }, [databaseService]);
 
+  // Submit expense form (callbacks handle success/error)
   const handleSubmit = async () => {
     await submitForm();
-    // Success/error handling is done in the hook callbacks
   };
 
+  // Animate alerts panel out of view with callback
   const animateAlertsOut = (callback?: () => void) => {
     Animated.parallel([
       Animated.timing(slideUpAnim, {
@@ -206,7 +199,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      // Reset animation values for next time
       slideUpAnim.setValue(500);
       fadeInAnim.setValue(0);
       backdropOpacity.setValue(0);
@@ -214,13 +206,12 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
     });
   };
 
+  // Handle user action on budget alert (e.g., view budget, review transactions)
   const handleAlertAction = (action: string) => {
-    // Animate out before navigation
     animateAlertsOut(() => {
       setShowAlerts(false);
       setCurrentAlerts([]);
-      
-      // Handle different alert actions
+
       switch (action) {
         case 'view_budget':
           navigation.navigate('Budget' as never);
@@ -233,35 +224,33 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
           navigation.navigate('History' as never);
           break;
         default:
-          // Default action - navigate to budget screen
           navigation.navigate('Budget' as never);
           break;
       }
     });
   };
 
+  // Dismiss a single alert from the panel
   const handleDismissAlert = (alertId: string) => {
-    // Remove the specific alert from current alerts
     setCurrentAlerts(prev => {
       const filtered = prev.filter(alert => alert.id !== alertId);
-      
-      // If no more alerts after filtering, animate out and hide
+
       if (filtered.length === 0) {
         animateAlertsOut(() => {
           setShowAlerts(false);
           setCurrentAlerts([]);
         });
       }
-      
+
       return filtered;
     });
   };
 
+  // Dismiss all alerts at once and clear tracking
   const handleDismissAllAlerts = () => {
     animateAlertsOut(() => {
       setShowAlerts(false);
       setCurrentAlerts([]);
-      // Clear the shown alerts tracking to allow them to show again if needed
       shownAlertIds.clear();
     });
   };
@@ -279,7 +268,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Material Design Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <Text style={[styles.headerText, { color: theme.colors.onPrimary }]}>
           Add Expense
@@ -291,15 +279,12 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView 
-          style={styles.scrollView} 
+        <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Form Container */}
           <View style={styles.formContainer}>
-            
-            {/* Amount Input */}
             <AmountInput
               value={formData.amount || 0}
               onValueChange={(amount) => updateField('amount', amount)}
@@ -307,7 +292,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
               testID="amount-input"
             />
 
-            {/* Category Selection */}
             <CategoryChipSelector
               categories={categories}
               selectedCategoryId={formData.categoryId || null}
@@ -316,7 +300,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
               testID="category-selector"
             />
 
-            {/* Description Input */}
             <DescriptionInput
               value={formData.description || ''}
               onValueChange={(description) => updateField('description', description)}
@@ -325,7 +308,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
               testID="description-input"
             />
 
-            {/* Date Picker */}
             <DatePickerInput
               value={formData.date || new Date()}
               onDateChange={(date) => updateField('date', date)}
@@ -333,7 +315,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
               testID="date-picker"
             />
 
-            {/* Save Button - Material Design Elevated Button */}
             <TouchableOpacity
               style={[
                 styles.saveButton,
@@ -350,13 +331,12 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
-                  <Text style={styles.saveButtonIcon}>💰</Text>
+                  <Text style={styles.saveButtonIcon}>[$]</Text>
                   <Text style={styles.saveButtonText}>Save Expense</Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {/* Form Status Indicator */}
             {Object.keys(errors).length > 0 && (
               <View style={styles.statusContainer}>
                 <Text style={styles.statusText}>
@@ -368,15 +348,14 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Budget Alerts Display */}
       {showAlerts && currentAlerts.length > 0 && !successVisible && (
-        <Animated.View 
+        <Animated.View
           style={[
             styles.alertsOverlay,
             { opacity: backdropOpacity }
           ]}
         >
-          <Animated.View 
+          <Animated.View
             style={[
               styles.alertsContainer,
               {
@@ -399,8 +378,8 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
                 </Text>
               </TouchableOpacity>
             </View>
-            
-            <ScrollView 
+
+            <ScrollView
               style={styles.alertsList}
               showsVerticalScrollIndicator={false}
             >
@@ -419,7 +398,6 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
         </Animated.View>
       )}
 
-      {/* Success Feedback Overlay */}
       <SuccessFeedback
         visible={successVisible}
         message={successMessage}
@@ -430,13 +408,10 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 };
 
 const styles = StyleSheet.create({
-  // Main Container
   container: {
     flex: 1,
-    // backgroundColor will be applied dynamically via theme
   },
-  
-  // Loading State
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -446,13 +421,10 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    // color will be applied dynamically via theme
     fontWeight: '500',
   },
-  
-  // Header - Material Design
+
   header: {
-    // backgroundColor will be applied dynamically via theme
     paddingVertical: 24,
     paddingHorizontal: 24,
     elevation: 4,

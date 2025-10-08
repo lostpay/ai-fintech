@@ -174,21 +174,19 @@ export const BudgetAnalyticsScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Current Month Summary */}
         {getCurrentMonthPerformance() && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              📊 Current Month Overview
+              Current Month Overview
             </Text>
             <MonthlySummary performance={getCurrentMonthPerformance()!} />
           </View>
         )}
 
-        {/* Budget Performance Chart */}
         {monthlyPerformance.length > 0 && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              📈 Budget vs Actual Spending
+              Budget vs Actual Spending
             </Text>
             <Card style={styles.chartCard}>
               <Card.Content>
@@ -198,21 +196,19 @@ export const BudgetAnalyticsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Success Metrics */}
         {successMetrics && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              🏆 Budget Success Metrics
+              Budget Success Metrics
             </Text>
             <SuccessMetrics metrics={successMetrics} />
           </View>
         )}
 
-        {/* Category Breakdown */}
         {categoryPerformance.length > 0 && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              🎯 Category Breakdown
+              Category Breakdown
             </Text>
             <Card style={styles.chartCard}>
               <Card.Content>
@@ -226,21 +222,19 @@ export const BudgetAnalyticsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Category Performance Analysis */}
         {categoryPerformance.length > 0 && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              📋 Category Performance
+              Category Performance
             </Text>
             <CategoryPerformance categories={categoryPerformance} />
           </View>
         )}
 
-        {/* Spending Trends */}
         {spendingTrends.length > 0 && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              📉 Spending Trends
+              Spending Trends
             </Text>
             <Card style={styles.chartCard}>
               <Card.Content>
@@ -254,11 +248,10 @@ export const BudgetAnalyticsScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Insights and Recommendations */}
         {insights.length > 0 && (
           <View style={styles.section}>
             <Text variant="titleLarge" style={styles.sectionTitle}>
-              💡 Insights & Recommendations
+              Insights & Recommendations
             </Text>
             <Card style={styles.insightsCard}>
               <Card.Content>

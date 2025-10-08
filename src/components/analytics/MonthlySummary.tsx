@@ -144,11 +144,10 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ performance }) =
           </Text>
         </View>
 
-        {/* Additional Insights */}
         {performance.average_overspend > 0 && (
           <View style={styles.insightSection}>
             <Text variant="bodyMedium" style={[styles.insightText, { color: theme.colors.error }]}>
-              💡 Average overspend: {formatCurrency(performance.average_overspend)} per exceeded budget
+              Average overspend: {formatCurrency(performance.average_overspend)} per exceeded budget
             </Text>
           </View>
         )}
@@ -156,7 +155,7 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ performance }) =
         {budgetEfficiency < 80 && (
           <View style={styles.insightSection}>
             <Text variant="bodyMedium" style={[styles.insightText, { color: '#4CAF50' }]}>
-              🎯 Great job staying under budget! Consider adjusting budgets to match spending patterns.
+              Great job staying under budget! Consider adjusting budgets to match spending patterns.
             </Text>
           </View>
         )}
@@ -164,7 +163,7 @@ export const MonthlySummary: React.FC<MonthlySummaryProps> = ({ performance }) =
         {performance.success_rate === 100 && (
           <View style={styles.insightSection}>
             <Text variant="bodyMedium" style={[styles.insightText, { color: '#4CAF50' }]}>
-              🏆 Perfect month! You stayed within budget for all categories.
+              Perfect month! You stayed within budget for all categories.
             </Text>
           </View>
         )}

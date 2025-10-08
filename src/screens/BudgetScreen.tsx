@@ -271,22 +271,21 @@ export const BudgetScreen: React.FC = () => {
               />
             ))}
 
-            {/* Analytics Preview */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.analyticsPreview}
               onPress={handleViewAnalytics}
               activeOpacity={0.7}
             >
               <View style={styles.analyticsContent}>
-                <Text style={styles.analyticsTitle}>📊 View Budget Analytics</Text>
+                <Text style={styles.analyticsTitle}>View Budget Analytics</Text>
                 <Text style={styles.analyticsSubtitle}>
                   See spending trends and budget performance insights
                 </Text>
               </View>
-              <MaterialIcons 
-                name="chevron-right" 
-                size={24} 
-                color={theme.colors.primary} 
+              <MaterialIcons
+                name="chevron-right"
+                size={24}
+                color={theme.colors.primary}
               />
             </TouchableOpacity>
           </>

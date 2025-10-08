@@ -19,7 +19,6 @@ import {
   EditTransactionScreen
 } from '../screens';
 import { CategoryFormScreen } from '../screens/CategoryFormScreen';
-import AIAssistantScreen from '../screens/AIAssistantScreen';
 import SimpleChatScreen from '../screens/SimpleChatScreen';
 
 // Import types

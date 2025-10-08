@@ -1,6 +1,7 @@
 /**
- * Enhanced TransactionForm with comprehensive validation integration
- * Implements Story 1.4 requirements for advanced form validation
+ * TransactionForm Component
+ * Provides comprehensive form validation with real-time feedback.
+ * Validates amount, description, category, and date fields with detailed error messages.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -87,9 +88,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState({ categories: true, submitting: false });
 
-  /**
-   * Initialize database and load categories
-   */
+  // Load categories from database on component mount
   useEffect(() => {
     const initializeForm = async () => {
       try {
@@ -105,18 +104,13 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     };
 
     initializeForm();
-
-    // Note: No cleanup needed for singleton database service
   }, []);
 
-  /**
-   * Real-time validation with debouncing
-   */
+  // Validate form data against business rules and constraints
   const performValidation = useCallback(async (data: FormData) => {
     setValidationState(prev => ({ ...prev, isValidating: true }));
-    
+
     try {
-      // Convert form data to validation format
       const validationData: TransactionFormData = {
         amount: data.amount,
         description: data.description,
@@ -125,101 +119,83 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         transaction_type: data.transaction_type
       };
 
-      // Perform comprehensive validation
       const validationResult = validateCompleteTransaction(validationData, categories);
-      
+
       setErrors(validationResult.errors);
       setValidationState({
         isValidating: false,
         hasValidated: true,
         isValid: validationResult.isValid
       });
-      
+
     } catch (error) {
       console.error('Validation error:', error);
-      setValidationState(prev => ({ 
-        ...prev, 
+      setValidationState(prev => ({
+        ...prev,
         isValidating: false,
         isValid: false
       }));
     }
   }, [categories]);
 
-  /**
-   * Debounced validation effect
-   */
+  // Debounce validation to avoid excessive re-renders on rapid input
   useEffect(() => {
-    if (categories.length === 0) return; // Wait for categories to load
-    
+    if (categories.length === 0) return;
+
     const validationTimeout = setTimeout(() => {
       performValidation(formData);
-    }, 300); // 300ms debounce
+    }, 300);
 
     return () => clearTimeout(validationTimeout);
   }, [formData, categories, performValidation]);
 
-  /**
-   * Enhanced amount change handler with real-time validation
-   */
+  // Sanitize amount input to allow only valid numeric values
   const handleAmountChange = (value: string) => {
-    // Allow only numbers, decimal point, and remove multiple decimals
     let sanitized = value.replace(/[^0-9.]/g, '');
     const decimalCount = (sanitized.match(/\./g) || []).length;
     if (decimalCount > 1) {
       const parts = sanitized.split('.');
       sanitized = parts[0] + '.' + parts.slice(1).join('');
     }
-    
+
     setFormData(prev => ({ ...prev, amount: sanitized }));
-    
-    // Clear amount error for immediate feedback
+
     if (errors.amount) {
       setErrors(prev => ({ ...prev, amount: undefined }));
     }
   };
 
-  /**
-   * Enhanced description change handler with character counter
-   */
+  // Update description and clear validation error
   const handleDescriptionChange = (value: string) => {
     setFormData(prev => ({ ...prev, description: value }));
-    
-    // Clear description error for immediate feedback
+
     if (errors.description) {
       setErrors(prev => ({ ...prev, description: undefined }));
     }
   };
 
-  /**
-   * Enhanced category change handler with validation
-   */
+  // Update selected category and clear validation error
   const handleCategoryChange = (value: number | string) => {
     setFormData(prev => ({ ...prev, category_id: value }));
-    
-    // Clear category error for immediate feedback
+
     if (errors.category_id) {
       setErrors(prev => ({ ...prev, category_id: undefined }));
     }
   };
 
-  /**
-   * Enhanced date change handler with validation
-   */
+  // Handle date picker selection
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
       setFormData(prev => ({ ...prev, date: selectedDate }));
-      
-      // Clear date error
+
       if (errors.date) {
         setErrors(prev => ({ ...prev, date: undefined }));
       }
     }
   };
 
-  /**
-   * Enhanced form submission with comprehensive error handling
-   */
+  // Validate form and submit transaction to database
   const handleSubmit = async () => {
     if (validationState.isValidating) {
       Alert.alert('Please Wait', 'Form validation is in progress...');
@@ -228,7 +204,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
     if (!validationState.isValid || Object.keys(errors).some(key => errors[key as keyof FormErrors])) {
       Alert.alert(
-        'Validation Error', 
+        'Validation Error',
         'Please correct the highlighted errors before submitting.',
         [{ text: 'OK' }]
       );
@@ -238,24 +214,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     setLoading(prev => ({ ...prev, submitting: true }));
 
     try {
-      // Convert form data to transaction format
       const transactionData: TransactionFormData = {
         amount: parseFloat(formData.amount),
         description: formData.description.trim(),
-        category_id: typeof formData.category_id === 'string' 
-          ? parseInt(formData.category_id, 10) 
+        category_id: typeof formData.category_id === 'string'
+          ? parseInt(formData.category_id, 10)
           : formData.category_id,
         date: formData.date,
         transaction_type: formData.transaction_type
       };
 
-      // Create transaction through enhanced database service
       await databaseService.createTransactionWithValidation(transactionData);
-      
-      // Success feedback
+
       const successMessage = `${formData.transaction_type === 'expense' ? 'Expense' : 'Income'} added successfully!`;
-      
-      // Clear form after successful submission
+
       setFormData({
         amount: '',
         description: '',
@@ -269,23 +241,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         hasValidated: false,
         isValid: false
       });
-      
+
       Alert.alert('Success', successMessage);
       onSubmit(true, successMessage);
-      
+
     } catch (error) {
       console.error('Error saving transaction:', error);
-      
-      // Handle different types of errors
+
       let errorMessage = 'Failed to save transaction. Please try again.';
-      
+
       if (error instanceof ValidationError) {
         setErrors(error.validationErrors);
         errorMessage = formatValidationErrors(error.validationErrors);
       } else if (isAppError(error)) {
         errorMessage = error.error.message;
         if (error.error.code === 'FOREIGN_KEY_ERROR') {
-          // Refresh categories if foreign key error
           try {
             const refreshedCategories = await databaseService.getCategories();
             setCategories(refreshedCategories);
@@ -294,7 +264,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           }
         }
       }
-      
+
       Alert.alert('Error', errorMessage);
       onSubmit(false, errorMessage);
     } finally {
@@ -302,9 +272,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     }
   };
 
-  /**
-   * Format date for display
-   */
+  // Format date to user-friendly string
   const formatDate = (date: Date): string => {
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
@@ -313,22 +281,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     });
   };
 
-  /**
-   * Get character count display for description
-   */
+  // Calculate character count and color based on remaining characters
   const getDescriptionInfo = () => {
     const length = formData.description.length;
     const maxLength = 200;
     const remaining = maxLength - length;
     const isNearLimit = remaining <= 20;
-    
+
     return {
       text: `${length}/${maxLength}`,
       color: isNearLimit ? (remaining < 0 ? '#ff190c' : '#ff9500') : '#86939e'
     };
   };
 
-  // Loading state
   if (loading.categories) {
     return (
       <View style={styles.loadingContainer}>

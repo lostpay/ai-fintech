@@ -1,6 +1,7 @@
 /**
- * DatePickerInput Component - Material Design 3 Date Picker Integration
- * Implements Story 2.3 requirements for Material Design date picker
+ * DatePickerInput Component
+ * Material Design 3 compliant date picker for transaction forms.
+ * Provides smart date display with "Today" and "Yesterday" shortcuts.
  */
 
 import React, { useState } from 'react';
@@ -22,6 +23,7 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
 }) => {
   const [showPicker, setShowPicker] = useState(false);
 
+  // Handle date selection from native picker
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowPicker(false);
     if (selectedDate) {
@@ -33,8 +35,8 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
     setShowPicker(true);
   };
 
+  // Format date to localized string (e.g., "Mon, Jan 15, 2024")
   const formatDate = (date: Date): string => {
-    // Ensure we have a valid date
     const validDate = date instanceof Date && !isNaN(date.getTime()) ? date : new Date();
     return validDate.toLocaleDateString('en-US', {
       weekday: 'short',
@@ -44,18 +46,18 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
     });
   };
 
+  // Get user-friendly date display (shows "Today", "Yesterday", or formatted date)
   const getDisplayDate = (): string => {
-    // Ensure value is a valid date
     const dateToUse = value instanceof Date && !isNaN(value.getTime()) ? value : new Date();
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    // Compare dates without time
+
+    // Strip time components for accurate date comparison
     const valueDate = new Date(dateToUse.getFullYear(), dateToUse.getMonth(), dateToUse.getDate());
     const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const yesterdayDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
-    
+
     if (valueDate.getTime() === todayDate.getTime()) {
       return 'Today';
     } else if (valueDate.getTime() === yesterdayDate.getTime()) {
@@ -67,12 +69,10 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Label */}
       <Text style={[styles.label, error && styles.labelError]}>
         Date
       </Text>
-      
-      {/* Date Input Button */}
+
       <TouchableOpacity
         style={[
           styles.inputButton,
@@ -84,31 +84,25 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
         accessibilityHint="Tap to open date picker"
         accessibilityRole="button"
       >
-        {/* Calendar Icon */}
         <View style={styles.iconContainer}>
-          <Text style={styles.calendarIcon}>📅</Text>
+          <Text style={styles.calendarIcon}>[CAL]</Text>
         </View>
-        
-        {/* Date Text */}
+
         <Text style={styles.dateText}>
           {getDisplayDate()}
         </Text>
-        
-        {/* Dropdown Arrow */}
+
         <Text style={styles.dropdownArrow}>▼</Text>
       </TouchableOpacity>
-      
-      {/* Error Message */}
+
       {error && (
         <Text style={styles.errorText}>{error}</Text>
       )}
-      
-      {/* Helper Text */}
+
       {!error && (
         <Text style={styles.helperText}>Select the date of your expense</Text>
       )}
-      
-      {/* Date Picker Modal */}
+
       {showPicker && (
         <DateTimePicker
           testID="date-picker"
@@ -116,8 +110,8 @@ const DatePickerInput: React.FC<DatePickerInputProps> = ({
           mode="date"
           display="default"
           onChange={handleDateChange}
-          maximumDate={new Date()} // Cannot select future dates
-          minimumDate={new Date(new Date().getFullYear() - 1, 0, 1)} // 1 year back
+          maximumDate={new Date()}
+          minimumDate={new Date(new Date().getFullYear() - 1, 0, 1)}
         />
       )}
     </View>
@@ -145,7 +139,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 4,
-    minHeight: 56, // Material Design standard height
+    minHeight: 56,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },

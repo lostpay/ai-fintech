@@ -1,6 +1,6 @@
 """
-Gateway Service - Main orchestrator for the AI chatbot
-Handles chat requests and routes to appropriate services (LLM, Text2SQL, RAG)
+Gateway Service - Main orchestrator for the AI chatbot.
+Handles chat requests and routes to appropriate backend services (LLM, Text2SQL, RAG, ML).
 """
 import os
 import json
@@ -13,47 +13,42 @@ from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Simple response formatter embedded in main.py
 class SimpleFormatter:
-    """Simplified formatter for ML responses"""
+    """Lightweight formatter for ML service responses"""
 
     def format_budget(self, data: Dict, lang: str = "en") -> str:
-        """Format budget into clean text"""
+        """Convert budget data into readable text format"""
         categories = data.get('categories', [])
         total = data.get('total_budget', 0)
 
         if not categories:
             return json.dumps(data, ensure_ascii=False)
 
-        # Sort by amount and get top categories
         sorted_cats = sorted(categories, key=lambda x: x.get('amount', 0), reverse=True)
         top_cats = sorted_cats[:5]
 
         if lang == "zh":
-            response = f"📋 您的个性化预算建议（每月）：\n\n"
-            response += f"💰 总预算: ${total:.0f}\n\n"
+            response = f"您的个性化预算建议（每月）：\n\n"
+            response += f"总预算: ${total:.0f}\n\n"
             response += "主要类别：\n"
             for cat in top_cats:
-                response += f"• {cat['category']}: ${cat['amount']:.0f}\n"
+                response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
         else:
-            response = f"📋 Your Personalized Monthly Budget:\n\n"
-            response += f"💰 Total: ${total:.0f}\n\n"
+            response = f"Your Personalized Monthly Budget:\n\n"
+            response += f"Total: ${total:.0f}\n\n"
             response += "Key Categories:\n"
             for cat in top_cats:
-                emoji = self._get_emoji(cat['category'])
-                response += f"{emoji} {cat['category']}: ${cat['amount']:.0f}\n"
+                response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
 
         return response
 
     def format_predictions(self, data: Dict, lang: str = "en") -> str:
-        """Format predictions into clean text"""
+        """Convert prediction data into readable text format"""
         predictions = data.get('predictions', [])
         confidence = data.get('confidence', 0)
 
@@ -61,12 +56,12 @@ class SimpleFormatter:
             return json.dumps(data, ensure_ascii=False)
 
         if lang == "zh":
-            response = f"📊 支出预测（置信度 {confidence:.0%}）：\n\n"
+            response = f"支出预测（置信度 {confidence:.0%}）：\n\n"
             for i, pred in enumerate(predictions[:2], 1):
                 amount = pred.get('predicted_amount', 0)
                 response += f"第{i}周: ${amount:.0f}\n"
         else:
-            response = f"📊 Spending Forecast (confidence: {confidence:.0%}):\n\n"
+            response = f"Spending Forecast (confidence: {confidence:.0%}):\n\n"
             for i, pred in enumerate(predictions[:2], 1):
                 amount = pred.get('predicted_amount', 0)
                 response += f"Week {i}: ${amount:.0f}\n"
@@ -74,11 +69,10 @@ class SimpleFormatter:
         return response
 
     def format_sql_result(self, data: Dict, lang: str = "en") -> str:
-        """Format SQL query results into natural text"""
+        """Convert SQL query results into natural language"""
         if data.get('error'):
             return json.dumps(data, ensure_ascii=False)
 
-        # Check if it's a simple aggregation result
         result_data = data.get('data', [])
         row_count = data.get('row_count', 0)
 
@@ -87,19 +81,17 @@ class SimpleFormatter:
                 return "没有找到相关记录。"
             return "No records found."
 
-        # For single value results (like totals)
+        # Handle single-value results like totals or aggregations
         if row_count == 1 and isinstance(result_data, list) and len(result_data) == 1:
             row = result_data[0]
-            # Format single row results cleanly
             if isinstance(row, dict):
-                # Look for common patterns
                 if 'total' in row or 'sum' in row or 'amount' in row:
-                    # It's likely a total/sum query
                     for key, value in row.items():
                         if isinstance(value, (int, float)):
                             return f"${value:.2f}"
                         return str(value)
-                # Otherwise format as key-value pairs
+
+                # Format as key-value pairs
                 formatted_items = []
                 for key, value in row.items():
                     if isinstance(value, (int, float)) and ('amount' in key.lower() or 'total' in key.lower()):
@@ -110,12 +102,11 @@ class SimpleFormatter:
             else:
                 return str(row)
 
-        # For multiple rows, format as a list
+        # Handle multiple rows
         if isinstance(result_data, list) and len(result_data) > 0:
             formatted_rows = []
-            for i, row in enumerate(result_data[:5], 1):  # Limit to 5 rows
+            for i, row in enumerate(result_data[:5], 1):
                 if isinstance(row, dict):
-                    # Extract key information
                     desc = row.get('description', '')
                     amount = row.get('amount', 0)
                     date = row.get('date', '')
@@ -128,21 +119,11 @@ class SimpleFormatter:
                 result += f"\n... and {len(result_data) - 5} more"
             return result
 
-        # Fallback to JSON if structure is unexpected
         return json.dumps(data.get('data', {}), ensure_ascii=False)
-
-    def _get_emoji(self, category: str) -> str:
-        """Get emoji for category"""
-        emojis = {
-            'Food': '🍔', 'Transport': '🚗', 'Shopping': '🛍️',
-            'Entertainment': '🎬', 'Home': '🏠', 'Bills': '💰',
-            'Beverage': '☕', 'Personal': '👤', 'Work': '💼'
-        }
-        return emojis.get(category, '•')
 
 formatter = SimpleFormatter()
 
-# Configuration
+# Service URLs from environment variables
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/v1")
 TEXT2SQL_URL = os.getenv("TEXT2SQL_URL", "http://127.0.0.1:7001")
 RAG_URL = os.getenv("RAG_URL", "http://127.0.0.1:7002")
@@ -155,7 +136,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -164,7 +145,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request/Response models
+# Request and response data models
 class ChatRequest(BaseModel):
     user_id: str
     message: str
@@ -174,7 +155,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     type: str = "final"
     text: str
-    data: Optional[Any] = None  # Allow both Dict and List data
+    data: Optional[Any] = None
     sources: Optional[List[Dict[str, Any]]] = None
     confidence: float = 1.0
 
@@ -182,7 +163,7 @@ class ToolCall(BaseModel):
     tool: str
     params: Dict[str, Any]
 
-# Tool schemas for LLM
+# Tool definitions for LLM function calling
 TOOLS = [
     {
         "type": "function",
@@ -306,25 +287,11 @@ TOOLS = [
     }
 ]
 
-
-#def get_system_prompt(lang: str) -> str:
-#    """Get system prompt based on language"""
-#    if lang == "zh":
-#        return """你是一个专业的个人财务助理。你可以：
-#1. 查询用户的支出数据（使用 query_expenses 工具）
-#2. 解答使用问题和FAQ（使用 search_docs 工具）
-#3. 提供财务建议和分析
-
-#请用中文回答，保持专业和友好。对于数据查询，使用提供的工具。"""
-#    else:
-#        return """You are a professional personal finance assistant. You can:
-#1. Query user's expense data (use query_expenses tool)
-#2. Answer usage questions and FAQs (use search_docs tool)
-#3. Provide financial advice and analysis
-
-#Please be professional and friendly. Use the provided tools for data queries."""
-
 def get_system_prompt(lang: str) -> str:
+    """
+    Generate system prompt for LLM based on language.
+    Instructs the LLM when to use each available tool.
+    """
     if lang == "zh":
         return """你是专业的个人财务助理。
 - 只要用户的问题涉及【金额/上月/本月/分类/趋势/是否超支/合计】→ 必须调用函数 query_expenses。
@@ -341,9 +308,11 @@ def get_system_prompt(lang: str) -> str:
 - For how-to/FAQ → call search_docs.
 - Prefer tools first; don't answer directly unless it's a pure explanation."""
 
-
 async def call_ollama(prompt: str, system: str, tools: List[Dict] = None) -> Dict:
-    """Call Ollama OpenAI-compatible API for LLM inference"""
+    """
+    Call Ollama's OpenAI-compatible API for LLM inference.
+    Supports tool/function calling when tools are provided.
+    """
     async with httpx.AsyncClient(timeout=60.0) as client:
         payload = {
             "model": LLM_MODEL,
@@ -357,17 +326,15 @@ async def call_ollama(prompt: str, system: str, tools: List[Dict] = None) -> Dic
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
-        # Optional but helpful: enforce JSON-only for normal answers
-        # payload["response_format"] = {"type":"json_object"}
 
         r = await client.post(f"{OLLAMA_URL}/chat/completions", json=payload)
         r.raise_for_status()
         return r.json()
 
 async def call_text2sql(query: str, user_id: str) -> Dict:
+    """Send natural language query to Text2SQL service for SQL generation and execution"""
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            # Only try the /generate endpoint that we know exists
             resp = await client.post(f"{TEXT2SQL_URL}/generate", json={"query": query, "user_id": user_id})
             if resp.status_code == 200:
                 result = resp.json()
@@ -381,6 +348,7 @@ async def call_text2sql(query: str, user_id: str) -> Dict:
             return {"error": f"Text2SQL service error: {str(e)}"}
 
 async def call_rag(query: str, lang: str) -> Dict:
+    """Query RAG service to search documentation and return relevant answers"""
     async with httpx.AsyncClient(timeout=30.0) as client:
         for path in ("/search", "/answer"):
             try:
@@ -392,11 +360,13 @@ async def call_rag(query: str, lang: str) -> Dict:
         return {"error": "RAG service unreachable"}
 
 async def call_data_creation_service(data_type: str, user_id: str, **kwargs) -> Dict:
-    """Call data creation service to create new records"""
+    """
+    Create new database records (transactions, budgets, goals, categories).
+    Imports Supabase service dynamically to handle database operations.
+    """
     try:
         logger.info(f"Creating {data_type} with parameters: {kwargs}")
 
-        # Import the Supabase service
         import sys
         from pathlib import Path
         current_dir = Path(__file__).parent.parent
@@ -412,11 +382,11 @@ async def call_data_creation_service(data_type: str, user_id: str, **kwargs) -> 
             transaction_type = kwargs.get("transaction_type", "expense")
             date_str = kwargs.get("date")
 
-            # If description is empty, use a default based on category
+            # Provide default description if empty
             if not description or description.strip() == "":
                 description = f"{transaction_type} - {category_name}" if category_name else f"{transaction_type} transaction"
 
-            # Find or create category
+            # Ensure category exists
             category_id = service.find_category_by_name(category_name)
             if not category_id:
                 category_id = service.create_category(category_name)
@@ -450,7 +420,6 @@ async def call_data_creation_service(data_type: str, user_id: str, **kwargs) -> 
             if not period_start or not period_end:
                 return {"error": "Budget requires period_start and period_end dates"}
 
-            # Find or create category
             category_id = service.find_category_by_name(category_name)
             if not category_id:
                 category_id = service.create_category(category_name)
@@ -525,7 +494,7 @@ async def call_data_creation_service(data_type: str, user_id: str, **kwargs) -> 
         return {"error": f"Data creation service error: {str(e)}"}
 
 async def call_ml_service(analysis_type: str, user_id: str, timeframe: str = None, horizon: int = None) -> Dict:
-    """Call ML service for predictions, budgets, or patterns"""
+    """Call ML service for predictions, budgets, patterns, or overspending analysis"""
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             if analysis_type == "predict":
@@ -555,6 +524,7 @@ async def call_ml_service(analysis_type: str, user_id: str, timeframe: str = Non
             return {"error": f"ML service error: {str(e)}"}
 
 def parse_tool_calls(llm_response: Dict) -> List[ToolCall]:
+    """Extract tool/function calls from LLM response"""
     tool_calls: List[ToolCall] = []
     try:
         msg = llm_response["choices"][0]["message"]
@@ -573,9 +543,8 @@ def parse_tool_calls(llm_response: Dict) -> List[ToolCall]:
             tool_calls.append(ToolCall(tool=name, params=args))
     return tool_calls
 
-
 async def execute_tool(tool_call: ToolCall, user_id: str, lang: str) -> Dict:
-    """Execute a tool call"""
+    """Route tool call to appropriate backend service"""
     if tool_call.tool == "query_expenses":
         result = await call_text2sql(
             tool_call.params.get("natural_query", ""),
@@ -606,7 +575,6 @@ async def execute_tool(tool_call: ToolCall, user_id: str, lang: str) -> Dict:
             "result": result
         }
     elif tool_call.tool == "create_data":
-        # Extract data_type separately to avoid duplicate parameter error
         params = tool_call.params.copy()
         data_type = params.pop("data_type", "")
 
@@ -624,7 +592,7 @@ async def execute_tool(tool_call: ToolCall, user_id: str, lang: str) -> Dict:
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint for service monitoring"""
     return {
         "status": "healthy",
         "service": "gateway",
@@ -633,67 +601,65 @@ async def health_check():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Main chat endpoint"""
+    """
+    Main chat endpoint. Orchestrates the following flow:
+    1. Send user message to LLM with tool definitions
+    2. Parse and execute any tool calls from LLM response
+    3. Send tool results back to LLM for final answer synthesis
+    4. Return formatted response to user
+    """
     try:
         logger.info(f"Chat request from user {request.user_id}: {request.message}")
 
-        # Get system prompt
         system_prompt = get_system_prompt(request.lang)
 
-        # First LLM call with tools
+        # First LLM call to determine which tools to use
         llm_response = await call_ollama(
             request.message,
             system_prompt,
             TOOLS
         )
 
-        # Check for tool calls
         tool_calls = parse_tool_calls(llm_response)
 
         if tool_calls:
-            # Execute tools
+            # Execute all requested tools
             tool_results = []
             for tool_call in tool_calls:
                 result = await execute_tool(tool_call, request.user_id, request.lang)
                 tool_results.append(result)
 
-            # Format tool results for second LLM call
+            # Format tool results for LLM
             formatted_results = []
             for r in tool_results:
                 try:
-                    # Only format successful ML results
+                    # Format ML results using the formatter
                     if r['tool'] == 'ml_analysis' and 'result' in r and not r.get('result', {}).get('error'):
                         ml_result = r['result']
-                        # Format based on content
                         if 'categories' in ml_result and 'total_budget' in ml_result:
-                            # Budget response
                             formatted = formatter.format_budget(ml_result, request.lang)
                             formatted_results.append(f"Tool: {r['tool']}\nResult: {formatted}")
                         elif 'predictions' in ml_result:
-                            # Predictions response
                             formatted = formatter.format_predictions(ml_result, request.lang)
                             formatted_results.append(f"Tool: {r['tool']}\nResult: {formatted}")
                         else:
-                            # Other ML results - use original format
                             formatted_results.append(f"Tool: {r['tool']}\nResult: {json.dumps(r['result'], ensure_ascii=False)}")
                     else:
-                        # Non-ML results or errors - use original format
                         formatted_results.append(f"Tool: {r['tool']}\nResult: {json.dumps(r['result'], ensure_ascii=False)}")
                 except Exception as e:
-                    # If any error, fall back to original format
                     logger.debug(f"Formatting error: {e}")
                     formatted_results.append(f"Tool: {r['tool']}\nResult: {json.dumps(r.get('result', {}), ensure_ascii=False)}")
 
             tool_context = "\n".join(formatted_results)
 
-            # Second LLM call with tool results
+            # Second LLM call to synthesize final answer
             final_prompt = f"""User question: {request.message}
 
 Tool results:
 {tool_context}
 
 Please provide a natural, conversational answer based on the tool results.
-If the results are already well-formatted (with emojis and structure), use them as-is.
+If the results are already well-formatted, use them as-is.
 Don't include technical details like 'elasticity factors' or 'adjustment factors'.
 Focus on the key information the user needs."""
 
@@ -702,40 +668,29 @@ Focus on the key information the user needs."""
                 system_prompt
             )
 
-            # Extract response text
             response_text = final_response["choices"][0]["message"].get("content", "")
 
-            # Prepare embedded data from tool results
-            # Don't include SQL query results in the response UI
+            # Prepare embedded data for response (excluding SQL results)
             embedded_data = None
             sources = None
-            ml_insights = None
 
             for result in tool_results:
-                # Skip SQL query results - don't embed them
                 if result["tool"] == "query_expenses":
-                    # Don't set embedded_data for SQL results
                     continue
                 elif result["tool"] == "search_docs" and "sources" in result.get("result", {}):
                     sources = result["result"]["sources"]
                 elif result["tool"] == "ml_analysis" and "result" in result:
-                    # ML data can be predictions, budget, or patterns
                     ml_result = result["result"]
-                    if "predictions" in ml_result:
-                        embedded_data = ml_result
-                    elif "categories" in ml_result:  # Budget response
-                        embedded_data = ml_result
-                    elif "recurrences" in ml_result:  # Pattern response
+                    if "predictions" in ml_result or "categories" in ml_result or "recurrences" in ml_result:
                         embedded_data = ml_result
                 elif result["tool"] == "create_data" and "result" in result:
-                    # Data creation results - can be embedded to show success
                     create_result = result["result"]
                     if create_result.get("success"):
                         embedded_data = create_result
 
             return ChatResponse(
                 text=response_text,
-                data=embedded_data,  # This will be None for SQL queries
+                data=embedded_data,
                 sources=sources,
                 confidence=0.9
             )

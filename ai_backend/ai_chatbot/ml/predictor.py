@@ -1,5 +1,7 @@
 """
-Spending Prediction Module using Random Forest
+Spending Prediction Module.
+Uses Random Forest regression to predict future spending patterns.
+Supports daily, weekly, and monthly forecasts with confidence intervals.
 """
 
 import numpy as np
@@ -17,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 class SpendingPredictor:
     """
-    Random Forest-based spending predictor
+    Random Forest-based predictor for spending forecasts.
+    Provides daily/weekly/monthly predictions with uncertainty estimates.
     """
 
     def __init__(self, model_path: Optional[str] = None):
@@ -27,15 +30,14 @@ class SpendingPredictor:
         self.metrics = {}
         self.feature_columns = []
 
-        # Ensure model directory exists
         os.makedirs(self.model_path, exist_ok=True)
 
     def train(self, df: pd.DataFrame, target_col: str = 'total_daily') -> Dict[str, float]:
         """
-        Train the Random Forest model
+        Train Random Forest model using time series cross-validation.
+        Returns training metrics including MAE, RMSE, and R-squared.
         """
         try:
-            # Prepare features and target
             X, y, feature_cols = self._prepare_training_data(df, target_col)
 
             if len(X) < 30:
@@ -43,7 +45,7 @@ class SpendingPredictor:
 
             self.feature_columns = feature_cols
 
-            # Initialize model with parameters from notebook
+            # Initialize Random Forest with tuned hyperparameters
             self.model = RandomForestRegressor(
                 n_estimators=300,
                 max_depth=15,
@@ -53,7 +55,7 @@ class SpendingPredictor:
                 n_jobs=-1
             )
 
-            # Time series cross-validation
+            # Perform time series cross-validation
             tscv = TimeSeriesSplit(n_splits=5)
             cv_scores = []
 
@@ -61,31 +63,21 @@ class SpendingPredictor:
                 X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
                 y_train, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
-                # Fit model
                 self.model.fit(X_train, y_train)
-
-                # Validate
                 y_pred = self.model.predict(X_val)
-                mae = mean_absolute_error(y_val, y_pred)
-                cv_scores.append(mae)
+                cv_scores.append(mean_absolute_error(y_val, y_pred))
 
-            # Final training on all data
+            # Train final model on all data
             self.model.fit(X, y)
 
-            # Calculate feature importance
-            self.feature_importance = dict(zip(
-                feature_cols,
-                self.model.feature_importances_
-            ))
-
-            # Sort features by importance
+            # Store feature importance rankings
             self.feature_importance = dict(sorted(
-                self.feature_importance.items(),
+                zip(feature_cols, self.model.feature_importances_),
                 key=lambda x: x[1],
                 reverse=True
             ))
 
-            # Calculate final metrics
+            # Calculate performance metrics
             y_pred = self.model.predict(X)
             self.metrics = {
                 'mae': mean_absolute_error(y, y_pred),
@@ -98,7 +90,6 @@ class SpendingPredictor:
 
             logger.info(f"Model trained successfully. MAE: {self.metrics['mae']:.2f}")
 
-            # Save model
             self._save_model()
 
             return self.metrics
@@ -110,15 +101,14 @@ class SpendingPredictor:
     def predict(self, df: pd.DataFrame, timeframe: str = 'daily',
                 horizon: int = 7) -> Tuple[List[Dict], float, List[str]]:
         """
-        Generate spending predictions
+        Generate spending predictions for specified timeframe.
+        Returns predictions with confidence intervals, confidence score, and driver features.
         """
         try:
-            # Load model if not in memory
             if self.model is None:
                 self._load_model()
 
-            predictions = []
-
+            # Generate predictions based on timeframe
             if timeframe == 'daily':
                 predictions = self._predict_daily(df, horizon)
             elif timeframe == 'weekly':
@@ -128,10 +118,7 @@ class SpendingPredictor:
             else:
                 raise ValueError(f"Invalid timeframe: {timeframe}")
 
-            # Calculate confidence based on recent prediction accuracy
             confidence = self._calculate_confidence(df)
-
-            # Get top feature drivers
             drivers = self._get_prediction_drivers()
 
             return predictions, confidence, drivers
@@ -142,9 +129,10 @@ class SpendingPredictor:
 
     def _prepare_training_data(self, df: pd.DataFrame, target_col: str) -> Tuple[pd.DataFrame, pd.Series, List[str]]:
         """
-        Prepare features and target for training
+        Extract features and target variable for model training.
+        Filters to available features and removes rows with missing values.
         """
-        # Define feature columns to use
+        # Core features for prediction
         feature_cols = [
             'day_of_week', 'is_weekend', 'is_month_start', 'is_month_end',
             'dow_sin', 'dow_cos', 'dom_sin', 'dom_cos',
@@ -164,40 +152,36 @@ class SpendingPredictor:
                     f'{category}_rolling_mean_7'
                 ])
 
-        # Filter available features
+        # Filter to available features
         available_features = [col for col in feature_cols if col in df.columns]
-
-        # Log feature availability
         missing_features = [col for col in feature_cols if col not in df.columns]
+
         if missing_features:
-            logger.warning(f"Missing features: {missing_features[:5]}...")  # Show first 5
+            logger.warning(f"Missing features: {missing_features[:5]}...")
 
         logger.info(f"Using {len(available_features)} features for training")
 
-        # Remove rows with NaN in features or target
+        # Remove rows with missing values
         clean_df = df[available_features + [target_col]].dropna()
 
-        # Validate data quality
         if len(clean_df) == 0:
             raise ValueError("No valid data rows after cleaning")
 
-        # Check for feature variance (avoid constant features)
         X = clean_df[available_features]
         y = clean_df[target_col]
 
-        # Log data shape
         logger.info(f"Training data shape: {X.shape}, target range: {y.min():.2f} to {y.max():.2f}")
 
         return X, y, available_features
 
     def _predict_daily(self, df: pd.DataFrame, horizon: int) -> List[Dict]:
         """
-        Predict daily spending
+        Generate day-by-day predictions.
+        Uses ensemble tree predictions to estimate uncertainty bounds.
         """
         predictions = []
         last_date = df['date'].max()
 
-        # Create future dates
         future_dates = pd.date_range(
             start=last_date + timedelta(days=1),
             periods=horizon,
@@ -205,14 +189,10 @@ class SpendingPredictor:
         )
 
         for date in future_dates:
-            # Prepare features for prediction
             features = self._create_future_features(df, date)
-
-            # Predict
             pred_amount = self.model.predict(features)[0]
 
-            # Calculate prediction interval
-            # Using ensemble variance for uncertainty
+            # Estimate prediction interval from tree ensemble
             tree_predictions = np.array([
                 tree.predict(features)[0] for tree in self.model.estimators_
             ])
@@ -227,7 +207,7 @@ class SpendingPredictor:
                 'timeframe': 'daily'
             })
 
-            # Update DataFrame with prediction for next iteration
+            # Update dataframe for rolling predictions
             new_row = pd.DataFrame({
                 'date': [date],
                 'total_daily': [pred_amount]
@@ -238,10 +218,10 @@ class SpendingPredictor:
 
     def check_overspending(self, df: pd.DataFrame, budget_data: Dict = None) -> Dict:
         """
-        Check if user is likely to overspend based on predictions and budget
+        Assess overspending risk by comparing predictions to budget or historical average.
+        Returns overspending flag, comparison message, and confidence level.
         """
         try:
-            # Get weekly prediction
             predictions, confidence, drivers = self.predict(df, timeframe='weekly', horizon=1)
 
             if not predictions:
@@ -253,11 +233,10 @@ class SpendingPredictor:
 
             predicted_weekly = predictions[0]['predicted_amount']
 
-            # If no budget provided, use simple heuristic
+            # Compare to budget if provided, otherwise use historical average
             if not budget_data or budget_data.get('total', 0) <= 0:
-                # Compare to historical average
                 avg_weekly = df['total_daily'].mean() * 7 if 'total_daily' in df.columns else 0
-                overspending = predicted_weekly > avg_weekly * 1.2  # 20% above average
+                overspending = predicted_weekly > avg_weekly * 1.2
 
                 return {
                     'overspending': overspending,
@@ -267,8 +246,7 @@ class SpendingPredictor:
                     'confidence': confidence
                 }
             else:
-                # Use actual budget
-                weekly_budget = budget_data.get('total', 0) / 4.3  # Convert monthly to weekly
+                weekly_budget = budget_data.get('total', 0) / 4.3
                 overspending = predicted_weekly > weekly_budget
 
                 return {
@@ -289,12 +267,11 @@ class SpendingPredictor:
 
     def _predict_weekly(self, df: pd.DataFrame, horizon: int) -> List[Dict]:
         """
-        Predict weekly spending
+        Aggregate daily predictions into weekly forecasts.
+        Returns weekly totals with confidence intervals.
         """
-        # Get daily predictions for the next weeks
         daily_predictions = self._predict_daily(df, horizon * 7)
 
-        # Aggregate to weekly
         weekly_predictions = []
         for week in range(horizon):
             week_start = week * 7
@@ -321,20 +298,18 @@ class SpendingPredictor:
 
     def _predict_monthly(self, df: pd.DataFrame, horizon: int) -> List[Dict]:
         """
-        Predict monthly spending
+        Generate monthly spending forecasts.
+        Handles variable month lengths and rolls forward predictions.
         """
         monthly_predictions = []
         last_date = df['date'].max()
 
         for month in range(horizon):
-            # Get the target month
             target_month = last_date + pd.DateOffset(months=month+1)
             days_in_month = pd.Period(target_month, freq='M').days_in_month
 
-            # Predict daily for the month
             daily_preds = self._predict_daily(df, days_in_month)
 
-            # Aggregate to monthly
             monthly_sum = sum(p['predicted_amount'] for p in daily_preds)
             monthly_lower = sum(p['lower_bound'] for p in daily_preds)
             monthly_upper = sum(p['upper_bound'] for p in daily_preds)
@@ -348,7 +323,7 @@ class SpendingPredictor:
                 'timeframe': 'monthly'
             })
 
-            # Update df for next month
+            # Update dataframe for next month
             df = pd.concat([
                 df,
                 pd.DataFrame({
@@ -366,12 +341,10 @@ class SpendingPredictor:
 
     def _create_future_features(self, df: pd.DataFrame, target_date: pd.Timestamp) -> pd.DataFrame:
         """
-        Create features for future prediction
+        Construct feature vector for a future date.
+        Uses recent data to populate lag and rolling features.
         """
-        # Get the most recent data
         recent_data = df.tail(30).copy()
-
-        # Create feature vector
         features = pd.DataFrame(index=[0])
 
         # Temporal features
@@ -386,7 +359,7 @@ class SpendingPredictor:
         features['dom_sin'] = np.sin(2 * np.pi * target_date.day / 31)
         features['dom_cos'] = np.cos(2 * np.pi * target_date.day / 31)
 
-        # Lag features (from recent data)
+        # Lag features from recent data
         if 'total_daily' in recent_data.columns:
             features['total_lag_1'] = recent_data['total_daily'].iloc[-1]
             features['total_lag_2'] = recent_data['total_daily'].iloc[-2] if len(recent_data) > 1 else 0
@@ -395,7 +368,7 @@ class SpendingPredictor:
         else:
             features[['total_lag_1', 'total_lag_2', 'total_lag_3', 'total_lag_7']] = 0
 
-        # Rolling features
+        # Rolling statistics
         if 'total_daily' in recent_data.columns:
             features['total_rolling_mean_3'] = recent_data['total_daily'].tail(3).mean()
             features['total_rolling_mean_7'] = recent_data['total_daily'].tail(7).mean()
@@ -407,27 +380,12 @@ class SpendingPredictor:
                      'total_rolling_std_7', 'total_rolling_max_7']] = 0
 
         # Behavioral features
-        if 'days_since_spike' in recent_data.columns:
-            features['days_since_spike'] = recent_data['days_since_spike'].iloc[-1] + 1
-        else:
-            features['days_since_spike'] = 7
+        features['days_since_spike'] = recent_data['days_since_spike'].iloc[-1] + 1 if 'days_since_spike' in recent_data.columns else 7
+        features['spending_momentum'] = recent_data['spending_momentum'].mean() if 'spending_momentum' in recent_data.columns else 0
+        features['category_diversity'] = recent_data['category_diversity'].mean() if 'category_diversity' in recent_data.columns else 3
+        features['spending_consistency'] = recent_data['spending_consistency'].mean() if 'spending_consistency' in recent_data.columns else 0.5
 
-        if 'spending_momentum' in recent_data.columns:
-            features['spending_momentum'] = recent_data['spending_momentum'].mean()
-        else:
-            features['spending_momentum'] = 0
-
-        if 'category_diversity' in recent_data.columns:
-            features['category_diversity'] = recent_data['category_diversity'].mean()
-        else:
-            features['category_diversity'] = 3
-
-        if 'spending_consistency' in recent_data.columns:
-            features['spending_consistency'] = recent_data['spending_consistency'].mean()
-        else:
-            features['spending_consistency'] = 0.5
-
-        # Add category-specific features
+        # Category-specific features
         for category in ['Food', 'Transport', 'Shopping']:
             for suffix in ['_lag_1', '_lag_7', '_rolling_mean_7']:
                 col_name = f'{category}{suffix}'
@@ -440,7 +398,7 @@ class SpendingPredictor:
                     else:
                         features[col_name] = 0
 
-        # Ensure all required features are present
+        # Fill missing features with zeros
         for col in self.feature_columns:
             if col not in features.columns:
                 features[col] = 0
@@ -449,26 +407,26 @@ class SpendingPredictor:
 
     def _calculate_confidence(self, df: pd.DataFrame) -> float:
         """
-        Calculate prediction confidence based on recent accuracy
+        Estimate prediction confidence based on model performance.
+        Uses inverse of normalized MAE to derive confidence score.
         """
         if self.metrics and 'mae' in self.metrics:
-            # Base confidence on inverse of normalized MAE
             avg_spending = df['total_daily'].mean() if 'total_daily' in df.columns else 100
             normalized_mae = self.metrics['mae'] / (avg_spending + 1e-6)
             confidence = max(0.5, min(0.95, 1 - normalized_mae))
         else:
-            confidence = 0.7  # Default confidence
+            confidence = 0.7
 
         return float(confidence)
 
     def _get_prediction_drivers(self, top_n: int = 5) -> List[str]:
         """
-        Get top feature drivers for predictions
+        Return top features driving predictions with human-readable names.
+        Shows importance percentage for each feature.
         """
         if not self.feature_importance:
             return []
 
-        # Convert feature names to human-readable
         feature_mapping = {
             'total_lag_1': 'Yesterday\'s spending',
             'total_lag_7': 'Last week\'s spending',
@@ -489,9 +447,7 @@ class SpendingPredictor:
         return drivers
 
     def _save_model(self):
-        """
-        Save trained model to disk
-        """
+        """Persist trained model to disk with metadata"""
         if self.model:
             model_file = os.path.join(self.model_path, 'spending_predictor.joblib')
             joblib.dump({
@@ -504,16 +460,14 @@ class SpendingPredictor:
             logger.info(f"Model saved to {model_file}")
 
     def _load_model(self):
-        """
-        Load model from disk
-        """
+        """Load previously trained model from disk"""
         model_file = os.path.join(self.model_path, 'spending_predictor.joblib')
         if os.path.exists(model_file):
             model_data = joblib.load(model_file)
             self.model = model_data['model']
             self.feature_columns = model_data['feature_columns']
             self.feature_importance = model_data.get('feature_importance', {})
-            self.metrics = model_data.get('metrics', {})
+            self.metrics = model_data.get('metric', {})
             logger.info(f"Model loaded from {model_file}")
         else:
             raise FileNotFoundError(f"No model found at {model_file}")

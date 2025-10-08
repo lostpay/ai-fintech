@@ -1,6 +1,8 @@
 """
-Advanced Budget Generation Module based on Notebook Implementation
-Implements weekly and monthly budget recommendations with sophisticated pattern detection
+Advanced Budget Generation Module.
+Implements sophisticated weekly and monthly budget recommendations using EMA-based algorithms,
+activity detection, and pattern-aware adjustments (hazards, spikes, volatility).
+Based on proven notebook implementation with enhanced features.
 """
 
 import pandas as pd
@@ -14,84 +16,101 @@ logger = logging.getLogger(__name__)
 
 class AdvancedBudgetGenerator:
     """
-    Generate personalized budgets using notebook's advanced algorithms
+    Generates personalized budgets using advanced algorithms.
+    Uses exponential moving average (EMA), activity classification,
+    recurrence pattern detection (hazards), and volatility-aware adjustments.
+    Supports both weekly and monthly budget generation with savings goal optimization.
     """
 
     def __init__(self):
-        # Categories from notebook
+        # All supported spending categories
         self.categories = [
             'Food', 'Beverage', 'Home', 'Shopping', 'Transport',
             'Entertainment', 'Beauty', 'Sports', 'Personal', 'Work',
             'Other', 'Bills', 'Travel'
         ]
 
-        # Essential categories with weekly floors (NT$ values from notebook)
+        # Minimum weekly spending thresholds for essential categories (NT$)
+        # These floors prevent unrealistic budget cuts in necessities
         self.essentials_weekly = {
-            'Food': 800,  # NT$800 weekly minimum
-            'Transport': 200,  # NT$200 weekly minimum
-            'Bills': 0,
-            'Home': 100  # NT$100 weekly minimum
+            'Food': 800,  # NT$800 weekly minimum for food
+            'Transport': 200,  # NT$200 weekly minimum for transport
+            'Bills': 0,  # No floor for bills (can vary widely)
+            'Home': 100  # NT$100 weekly minimum for home expenses
         }
 
-        # Elasticity factors from notebook (higher = easier to cut)
+        # Elasticity factors: how easily spending can be reduced
+        # <1 = essential/rigid, >1 = discretionary/flexible
         self.elasticity = defaultdict(lambda: 1.0, {
-            'Shopping': 1.5,
+            'Shopping': 1.5,  # Most elastic (easiest to cut)
             'Entertainment': 1.4,
             'Beauty': 1.3,
             'Beverage': 1.2,
             'Other': 1.2,
             'Travel': 1.2,
-            'Food': 0.6,
+            'Food': 0.6,  # Less elastic (harder to cut)
             'Transport': 0.6,
-            'Bills': 0.3,
+            'Bills': 0.3,  # Least elastic (fixed expenses)
             'Home': 0.7,
             'Sports': 1.1,
             'Personal': 1.0,
             'Work': 0.8
         })
 
-        # Configuration from notebook
+        # Algorithm configuration parameters
         self.config = {
-            'lookback_weeks': 8,
-            'alpha_ema': 0.6,
-            'volatility_cushion': 0.20,
-            'iqr_cap_mult': 1.75,
-            'inactive_thresh_mo': 5,
-            'spike_memory_days': 3,
-            'spike_buffer_pct': 0.15,
-            'hazard_days': [6, 7, 13, 14],
-            'hazard_boost_pct': 0.20
+            'lookback_weeks': 8,  # Number of weeks to analyze
+            'alpha_ema': 0.6,  # EMA smoothing factor (higher = more weight on recent data)
+            'volatility_cushion': 0.20,  # 20% buffer for volatile categories
+            'iqr_cap_mult': 1.75,  # IQR multiplier for outlier capping
+            'inactive_thresh_mo': 5,  # Days per month threshold for inactivity
+            'spike_memory_days': 3,  # Days to look back for spending spikes
+            'spike_buffer_pct': 0.15,  # 15% budget boost if recent spike detected
+            'hazard_days': [6, 7, 13, 14],  # Days since last spend indicating recurrence pattern
+            'hazard_boost_pct': 0.20  # 20% budget boost for detected recurrence
         }
 
     def generate_weekly_budget(self, df: pd.DataFrame,
                               target_savings: Optional[float] = None) -> Dict[str, Any]:
         """
-        Generate weekly budget using notebook's algorithm
+        Generate weekly budget recommendations using advanced EMA-based algorithm.
+        Combines historical spending patterns with activity detection, hazard patterns,
+        and volatility analysis. Optionally applies elasticity-based savings adjustments.
+
+        Args:
+            df: Daily spending DataFrame with date and category columns
+            target_savings: Optional weekly savings goal to achieve through budget cuts
+
+        Returns:
+            Dictionary with category budgets, total, methodology, and confidence score
         """
         try:
-            # Clean and prepare data
+            # Clean and validate input data
             df = self._prepare_data(df)
 
+            # Return defaults if no valid data available
             if df.empty:
                 return self._get_default_weekly_budget()
 
-            # Weekly aggregation (Monday to Sunday)
+            # Aggregate daily data into weekly periods (Monday-Sunday)
             weekly = self._aggregate_weekly(df)
 
-            # Get recent weeks for analysis
+            # Select recent weeks for analysis (8 weeks by default)
             cutoff = weekly['week_end'].max() - pd.Timedelta(weeks=self.config['lookback_weeks']-1)
             wk_recent = weekly[weekly['week_end'] >= cutoff].reset_index(drop=True)
 
             if wk_recent.empty:
                 return self._get_default_weekly_budget()
 
-            # Calculate statistics and activity levels
+            # Calculate comprehensive statistics for each category
+            # Includes EMA, volatility, activity level, hazard detection
             cat_stats = self._calculate_category_stats(df, wk_recent)
 
-            # Build raw budget
+            # Calculate initial budget for each category
             raw_budgets = {}
             for category in self.categories:
                 if category in cat_stats:
+                    # Apply EMA, hazards, spikes, volatility cushion
                     raw_budgets[category] = self._calculate_raw_budget(
                         category, cat_stats[category]
                     )
@@ -100,32 +119,33 @@ class AdvancedBudgetGenerator:
 
             raw_total = sum(raw_budgets.values())
 
-            # Apply savings adjustment if requested
+            # Apply savings optimization if user has a savings goal
             if target_savings and target_savings > 0:
+                # Use elasticity to prioritize cuts in discretionary categories
                 adjusted_budgets = self._apply_savings_adjustment(
                     raw_budgets, raw_total, target_savings
                 )
             else:
                 adjusted_budgets = raw_budgets
 
-            # Format response
+            # Format detailed response with all relevant statistics
             category_budgets = []
             for category in self.categories:
                 stats = cat_stats.get(category, {})
                 category_budgets.append({
                     'category': category,
                     'amount': round(adjusted_budgets[category], 2),
-                    'raw_amount': round(raw_budgets[category], 2),
-                    'activity': stats.get('activity', 'inactive'),
-                    'median_active': stats.get('median_active', 0),
-                    'ema': stats.get('ema', 0),
-                    'volatility': stats.get('cv', 0),
-                    'hazard': stats.get('hazard', 0),
-                    'spike_memory': stats.get('spike_memory', 0),
-                    'since_last': stats.get('since_last', float('inf'))
+                    'raw_amount': round(raw_budgets[category], 2),  # Before savings adjustment
+                    'activity': stats.get('activity', 'inactive'),  # inactive/occasional/regular
+                    'median_active': stats.get('median_active', 0),  # Median weekly spending
+                    'ema': stats.get('ema', 0),  # Exponential moving average
+                    'volatility': stats.get('cv', 0),  # Coefficient of variation
+                    'hazard': stats.get('hazard', 0),  # Recurrence pattern detected
+                    'spike_memory': stats.get('spike_memory', 0),  # Recent spending spike
+                    'since_last': stats.get('since_last', float('inf'))  # Days since last spend
                 })
 
-            # Sort by amount
+            # Sort categories by budget amount (highest first)
             category_budgets = sorted(
                 category_budgets,
                 key=lambda x: x['amount'],
@@ -147,51 +167,60 @@ class AdvancedBudgetGenerator:
 
     def generate_monthly_budget(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Generate monthly budget using notebook's algorithm
+        Generate monthly budget recommendations using EMA-Median blend.
+        Combines exponential moving average with rolling median for stability.
+        Applies activity-based multipliers and caps outliers.
+
+        Args:
+            df: Daily spending DataFrame with date and category columns
+
+        Returns:
+            Dictionary with monthly category budgets, total, and methodology
         """
         try:
-            # Clean and prepare data
+            # Clean and validate input data
             df = self._prepare_data(df)
 
             if df.empty:
                 return self._get_default_monthly_budget()
 
-            # Monthly aggregation
+            # Aggregate daily spending into monthly totals
             monthly = self._aggregate_monthly(df)
 
+            # Need at least 2 months of data for statistical calculations
             if len(monthly) < 2:
-                # Not enough history, use weekly budget * 4.3
+                # Fallback: convert weekly budget to monthly (multiply by 4.3)
                 weekly_budget = self.generate_weekly_budget(df)
                 return self._convert_weekly_to_monthly(weekly_budget)
 
-            # Calculate monthly budget for each category
+            # Calculate budget for each category
             category_budgets = []
 
             for category in self.categories:
                 if category not in monthly.columns:
                     continue
 
-                # Calculate statistics
-                ema = monthly[category].ewm(span=4, adjust=False).mean().iloc[-1]
-                median = monthly[category].rolling(6, min_periods=2).median().iloc[-1]
+                # Calculate key statistics over recent months
+                ema = monthly[category].ewm(span=4, adjust=False).mean().iloc[-1]  # 4-month EMA
+                median = monthly[category].rolling(6, min_periods=2).median().iloc[-1]  # 6-month median
                 q75 = monthly[category].rolling(6, min_periods=2).quantile(0.75).iloc[-1]
                 q25 = monthly[category].rolling(6, min_periods=2).quantile(0.25).iloc[-1]
-                iqr = (q75 - q25) if not pd.isna(q75 - q25) else 0
+                iqr = (q75 - q25) if not pd.isna(q75 - q25) else 0  # Interquartile range
 
-                # Activity classification (based on spend days)
+                # Classify activity level based on spending frequency
                 day_col = f'{category}_days'
                 if day_col in monthly.columns:
-                    recent_days = monthly[day_col].tail(2).sum()
+                    recent_days = monthly[day_col].tail(2).sum()  # Sum last 2 months
                     if recent_days <= 3:
-                        activity = 'inactive'
+                        activity = 'inactive'  # Rarely used
                     elif recent_days <= 15:
-                        activity = 'regular'
+                        activity = 'regular'  # Moderate usage
                     else:
-                        activity = 'active'
+                        activity = 'active'  # Frequent usage
                 else:
                     activity = 'inactive'
 
-                # Core blend: 70% EMA, 30% Median
+                # Weighted blend: 70% recent trend (EMA), 30% stable baseline (median)
                 if pd.isna(ema):
                     ema = 0
                 if pd.isna(median):
@@ -199,17 +228,17 @@ class AdvancedBudgetGenerator:
 
                 raw_budget = 0.7 * ema + 0.3 * median
 
-                # Apply activity multiplier
+                # Adjust based on activity level
                 if activity == 'inactive':
-                    raw_budget *= 0.35
+                    raw_budget *= 0.35  # Reduce inactive categories significantly
                 elif activity == 'active':
-                    raw_budget *= 1.15
+                    raw_budget *= 1.15  # Boost active categories
 
-                # Apply monthly floor (weekly * 4.3)
+                # Apply monthly floor (convert weekly minimum to monthly)
                 monthly_floor = self.essentials_weekly.get(category, 0) * 4.3
                 raw_budget = max(raw_budget, monthly_floor)
 
-                # Cap at recent high
+                # Cap at recent high with 8% buffer to prevent over-budgeting
                 recent_high = monthly[category].tail(6).max()
                 if not pd.isna(recent_high):
                     raw_budget = min(raw_budget, recent_high * 1.08)
@@ -249,7 +278,9 @@ class AdvancedBudgetGenerator:
 
     def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Prepare and clean data for budget generation
+        Prepare and validate DataFrame for budget generation.
+        Ensures date column exists, category columns are numeric,
+        and total spending is calculated.
         """
         df = df.copy()
 
@@ -276,7 +307,9 @@ class AdvancedBudgetGenerator:
 
     def _aggregate_weekly(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Aggregate data to weekly (Monday-Sunday)
+        Aggregate daily spending data into weekly periods.
+        Weeks run Monday-Sunday (W-SUN resampling).
+        Returns DataFrame with week_start, week_end, and category totals.
         """
         df_copy = df.set_index('date')
         weekly = df_copy.resample('W-SUN')[self.categories + ['Total']].sum()
@@ -286,7 +319,9 @@ class AdvancedBudgetGenerator:
 
     def _aggregate_monthly(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Aggregate data to monthly with spend-day counts
+        Aggregate daily spending data into monthly totals.
+        Also calculates spend-day counts (number of days with spending in each category).
+        Returns DataFrame with monthly sums and {category}_days columns.
         """
         df_copy = df.set_index('date')
 
@@ -310,52 +345,66 @@ class AdvancedBudgetGenerator:
     def _calculate_category_stats(self, df_daily: pd.DataFrame,
                                  wk_recent: pd.DataFrame) -> Dict[str, Dict]:
         """
-        Calculate comprehensive statistics for each category (notebook style)
+        Calculate comprehensive statistics for each category.
+        Computes EMA, median, volatility (CV), IQR, days since last spend,
+        hazard detection (recurrence), spike memory, and activity classification.
+
+        Args:
+            df_daily: Daily spending DataFrame
+            wk_recent: Recent weeks DataFrame (filtered to lookback period)
+
+        Returns:
+            Dictionary mapping category names to their statistical profiles
         """
         stats = {}
+        # Filter daily data to match weekly analysis window
         df_recent = df_daily[df_daily['date'] >= wk_recent['week_start'].min()]
 
         for category in self.categories:
             if category not in wk_recent.columns:
                 continue
 
-            # Weekly statistics
+            # Calculate weekly spending statistics
             wk_series = wk_recent[category].astype(float)
+            # Median of active weeks (excludes zero-spend weeks)
             median_active = wk_series[wk_series > 0].median() if (wk_series > 0).any() else 0.0
+            # Exponential moving average (gives more weight to recent weeks)
             ema = wk_series.ewm(alpha=self.config['alpha_ema'], adjust=False).mean().iloc[-1] if len(wk_series) else 0.0
 
-            # Volatility (coefficient of variation)
+            # Calculate volatility using coefficient of variation (CV = std/mean)
             active = wk_series[wk_series > 0]
             mean_a = active.mean() if len(active) else 0.0
             std_a = active.std(ddof=1) if len(active) > 1 else 0.0
-            cv = (std_a / mean_a) if mean_a > 0 else 0.0
+            cv = (std_a / mean_a) if mean_a > 0 else 0.0  # Higher CV = more volatile
 
-            # IQR for capping
+            # Calculate IQR for outlier capping
             q1 = active.quantile(0.25) if len(active) else 0.0
             q3 = active.quantile(0.75) if len(active) else 0.0
-            iqr = max(q3 - q1, 0.0)
+            iqr = max(q3 - q1, 0.0)  # Interquartile range
 
-            # Days since last spending
+            # Calculate days since last spending event
             if category in df_recent.columns:
                 last_indices = np.where(df_recent[category].values > 0)[0]
                 if len(last_indices) == 0:
-                    since_last = float('inf')
+                    since_last = float('inf')  # Never spent in this category
                 else:
                     since_last = (len(df_recent) - 1) - last_indices[-1]
             else:
                 since_last = float('inf')
 
-            # Hazard detection (recurrence pattern)
+            # Hazard detection: check if gap matches recurrence pattern
+            # Days 6-7 = weekly pattern, 13-14 = bi-weekly pattern
             hazard = 1 if since_last in self.config['hazard_days'] else 0
 
-            # Recent spike memory
+            # Recent spike memory: check if last N days had unusual spending
             if category in df_recent.columns:
                 recent_window = df_recent[category].tail(self.config['spike_memory_days'])
-                spike_memory = int(recent_window.sum() > (median_active if median_active > 0 else 200))  # NT$200 threshold
+                # Flag spike if recent sum exceeds median or NT$200 threshold
+                spike_memory = int(recent_window.sum() > (median_active if median_active > 0 else 200))
             else:
                 spike_memory = 0
 
-            # Activity classification
+            # Classify activity level based on average active days per month
             if category in df_recent.columns:
                 df_recent['month_key'] = df_recent['date'].dt.to_period('M')
                 monthly_counts = df_recent.groupby('month_key')[category].apply(lambda s: (s > 0).sum())
@@ -363,12 +412,13 @@ class AdvancedBudgetGenerator:
             else:
                 avg_active_days = 0
 
+            # Categorize based on spending frequency
             if avg_active_days < self.config['inactive_thresh_mo']:
-                activity = 'inactive'
+                activity = 'inactive'  # Less than 5 days/month
             elif avg_active_days < 12:
-                activity = 'occasional'
+                activity = 'occasional'  # 5-11 days/month
             else:
-                activity = 'regular'
+                activity = 'regular'  # 12+ days/month
 
             stats[category] = {
                 'median_active': float(median_active),
@@ -386,81 +436,111 @@ class AdvancedBudgetGenerator:
 
     def _calculate_raw_budget(self, category: str, stats: Dict) -> float:
         """
-        Calculate raw budget for a category using notebook algorithm
+        Calculate raw weekly budget for a category using advanced algorithm.
+        Blends EMA and median, applies activity/hazard/spike adjustments,
+        adds volatility cushion, and enforces floor/cap constraints.
+
+        Args:
+            category: Category name
+            stats: Statistical profile from _calculate_category_stats
+
+        Returns:
+            Raw weekly budget amount (before savings adjustment)
         """
-        # Base: blend EMA and median_active
+        # Start with weighted blend of EMA and median
+        # 60% EMA (recent trend) + 40% median (stable baseline)
         base = (self.config['alpha_ema'] * stats['ema'] +
                 (1 - self.config['alpha_ema']) * stats['median_active'])
 
-        # Inactivity clamp
+        # Significantly reduce budget for inactive categories
         if stats['activity'] == 'inactive':
-            base *= 0.25
+            base *= 0.25  # Cut to 25% for rarely-used categories
 
-        # Hazard boost (recurrence)
+        # Boost budget if recurrence pattern detected (hazard)
         if stats['hazard'] == 1:
-            base *= (1 + self.config['hazard_boost_pct'])
+            base *= (1 + self.config['hazard_boost_pct'])  # +20% for weekly/bi-weekly patterns
 
-        # Recent spike buffer
+        # Boost budget if recent spending spike detected
         if stats['spike_memory'] == 1:
-            base *= (1 + self.config['spike_buffer_pct'])
+            base *= (1 + self.config['spike_buffer_pct'])  # +15% buffer for recent spikes
 
-        # Volatility cushion
-        base *= (1 + self.config['volatility_cushion'] * stats['cv'])
+        # Add volatility cushion proportional to spending variability
+        base *= (1 + self.config['volatility_cushion'] * stats['cv'])  # Higher CV = larger buffer
 
-        # Apply cap using IQR above median_active
+        # Cap budget at median + 1.75*IQR to prevent extreme outliers
         cap = stats['median_active'] + self.config['iqr_cap_mult'] * stats['iqr']
         if stats['median_active'] > 0:
             base = min(base, cap)
 
-        # Essentials floor
+        # Apply minimum floor for essential categories
         floor = self.essentials_weekly.get(category, 0.0)
         return max(base, floor)
 
     def _apply_savings_adjustment(self, raw_budgets: Dict[str, float],
                                  raw_total: float, target_savings: float) -> Dict[str, float]:
         """
-        Adjust budgets to meet savings goal using elasticity
+        Adjust category budgets to achieve savings goal.
+        Uses elasticity factors to prioritize cuts in discretionary categories
+        while protecting essential spending (floors).
+
+        Args:
+            raw_budgets: Initial budget amounts by category
+            raw_total: Sum of raw budgets
+            target_savings: Amount to save per week
+
+        Returns:
+            Adjusted budget dictionary respecting floor constraints
         """
         target_total = max(0.0, raw_total - target_savings)
 
-        # Calculate adjustable headroom above floors
+        # Calculate adjustable amount above minimum floors for each category
         floors = {c: self.essentials_weekly.get(c, 0.0) for c in self.categories}
         headroom = {c: max(raw_budgets[c] - floors[c], 0.0) for c in self.categories}
         total_headroom = sum(headroom.values())
 
         adjusted = raw_budgets.copy()
 
+        # Only apply cuts if headroom exists and savings are needed
         if total_headroom > 0 and target_total < raw_total:
             need_cut = raw_total - target_total
 
-            # Distribute cuts weighted by elasticity * headroom
+            # Weight cuts by elasticity and available headroom
+            # Higher elasticity = easier to cut = takes more of the reduction
             weights = {c: self.elasticity[c] * headroom[c] for c in self.categories}
             wsum = sum(weights.values()) or 1.0
 
             for category in self.categories:
+                # Distribute cuts proportionally
                 cut_amount = need_cut * (weights[category] / wsum)
+                # Ensure we don't go below the floor
                 adjusted[category] = max(floors[category], raw_budgets[category] - cut_amount)
 
         return adjusted
 
     def _calculate_confidence(self, df: pd.DataFrame) -> float:
         """
-        Calculate budget confidence based on data quality
+        Calculate confidence score based on data availability.
+        More historical data yields higher confidence in predictions.
+
+        Returns:
+            Float between 0.5 and 0.95 representing confidence level
         """
         days = len(df)
 
+        # Confidence increases with data volume
         if days < 30:
-            return 0.5
+            return 0.5  # Low confidence (less than 1 month)
         elif days < 60:
-            return 0.7
+            return 0.7  # Medium confidence (1-2 months)
         elif days < 90:
-            return 0.85
+            return 0.85  # Good confidence (2-3 months)
         else:
-            return 0.95
+            return 0.95  # High confidence (3+ months)
 
     def _get_methodology_info(self, cat_stats: Dict) -> Dict:
         """
-        Generate methodology explanation
+        Generate methodology documentation for transparency.
+        Explains algorithm parameters and adjustments applied.
         """
         return {
             'approach': 'Advanced ML budgeting from notebook',
@@ -479,7 +559,8 @@ class AdvancedBudgetGenerator:
 
     def _get_default_weekly_budget(self) -> Dict:
         """
-        Default weekly budget for new users
+        Return default weekly budget for new users without spending history.
+        Provides reasonable baseline allocations across common categories.
         """
         return {
             'categories': [
@@ -496,14 +577,16 @@ class AdvancedBudgetGenerator:
 
     def _get_default_monthly_budget(self) -> Dict:
         """
-        Default monthly budget for new users
+        Return default monthly budget for new users.
+        Converts default weekly budget to monthly using 4.3 multiplier.
         """
         weekly = self._get_default_weekly_budget()
         return self._convert_weekly_to_monthly(weekly)
 
     def _convert_weekly_to_monthly(self, weekly_budget: Dict) -> Dict:
         """
-        Convert weekly budget to monthly (4.3 weeks per month)
+        Convert weekly budget to monthly budget.
+        Uses 4.3 weeks/month multiplier (52 weeks / 12 months).
         """
         monthly_categories = []
         for cat in weekly_budget['categories']:

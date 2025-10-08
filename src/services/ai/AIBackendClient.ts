@@ -1,6 +1,7 @@
 /**
  * AI Backend Client Service
- * Handles communication with the FastAPI AI backend
+ * Manages HTTP communication with the chatbot gateway service.
+ * Provides query processing, session management, and health monitoring.
  */
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -77,31 +78,27 @@ export interface DatabaseStats {
   last_transaction_date?: string;
 }
 
-// Configuration with environment detection
+// Determine base URL based on environment (Expo config, env var, or platform default)
 const getBaseUrl = () => {
-  // Try to get from Expo Constants first (works in Expo environments)
   const expoUrl = Constants.expoConfig?.extra?.chatbotApiUrl;
   if (expoUrl) {
     console.log('Using Chatbot API URL from Expo config:', expoUrl);
     return expoUrl;
   }
 
-  // Fallback to environment variable
   if (process.env.EXPO_PUBLIC_CHATBOT_API_URL) {
     console.log('Using Chatbot API URL from env:', process.env.EXPO_PUBLIC_CHATBOT_API_URL);
     return process.env.EXPO_PUBLIC_CHATBOT_API_URL;
   }
 
-  // Check if we're in web environment (Expo web, browser)
   if (typeof window !== 'undefined' && window.location) {
-    return 'http://192.168.1.103:7000'; // Chatbot gateway service
+    return 'http://192.168.1.103:7000';
   }
 
-  // Mobile platform detection
   const defaultUrl = Platform.select({
-    ios: 'http://localhost:7000', // iOS simulator uses localhost
-    android: 'http://192.168.1.103:7000', // Real Android device - your computer's IP
-    web: 'http://192.168.1.103:7000', // Web browser
+    ios: 'http://localhost:7000',
+    android: 'http://192.168.1.103:7000',
+    web: 'http://192.168.1.103:7000',
     default: 'http://192.168.1.103:7000'
   });
 
@@ -135,9 +132,7 @@ export class AIBackendClient {
     this.initializeSession();
   }
 
-  /**
-   * Initialize session ID
-   */
+  // Load or create a persistent session ID from async storage
   private async initializeSession(): Promise<void> {
     try {
       let sessionId = await AsyncStorage.getItem('@ai_session_id');
@@ -148,14 +143,11 @@ export class AIBackendClient {
       this.sessionId = sessionId;
     } catch (error) {
       console.error('Failed to initialize session:', error);
-      // Fallback to in-memory session
       this.sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
   }
 
-  /**
-   * Make HTTP request with retry logic
-   */
+  // Execute HTTP request with automatic retries on failure
   private async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -209,11 +201,8 @@ export class AIBackendClient {
     }
   }
 
-  /**
-   * Determine if request should be retried
-   */
+  // Check if error is retryable (network errors, timeouts, 5xx responses)
   private shouldRetry(error: any): boolean {
-    // Retry on network errors, timeouts, and certain HTTP errors
     return (
       error.name === 'AbortError' ||
       error.name === 'TypeError' ||
@@ -221,24 +210,17 @@ export class AIBackendClient {
     );
   }
 
-  /**
-   * Delay helper for retries
-   */
+  // Asynchronous delay utility for retry backoff
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // AI Query Methods
-
-  /**
-   * Process a natural language financial query
-   */
+  // Send natural language query to chatbot and receive structured response
   async processQuery(query: string, context?: Record<string, any>): Promise<AIQueryResponse> {
     if (!this.sessionId) {
       await this.initializeSession();
     }
 
-    // Map to new chatbot API format
     const request = {
       user_id: context?.user_id || 'default-user',
       message: query,
@@ -246,13 +228,12 @@ export class AIBackendClient {
       session_id: this.sessionId
     };
 
-    // Call the new chatbot endpoint
     const response = await this.makeRequest<any>('/chat', {
       method: 'POST',
       body: JSON.stringify(request),
     });
 
-    // Transform response to match expected format
+    // Normalize chatbot response to standard AIQueryResponse format
     return {
       message: response.text || response.message,
       confidence: response.confidence || 0.95,
@@ -270,15 +251,12 @@ export class AIBackendClient {
     };
   }
 
-  /**
-   * Get conversation history for current session
-   */
+  // Retrieve conversation history (not implemented in chatbot backend)
   async getConversationHistory(): Promise<ConversationHistoryResponse> {
     if (!this.sessionId) {
       await this.initializeSession();
     }
 
-    // Chatbot backend doesn't have conversation history endpoint yet
     return {
       session_id: this.sessionId || '',
       exchanges: [],
@@ -287,24 +265,18 @@ export class AIBackendClient {
     };
   }
 
-  /**
-   * Clear conversation history for current session
-   */
+  // Reset conversation by generating new session ID
   async clearConversationHistory(): Promise<void> {
     if (!this.sessionId) {
       await this.initializeSession();
     }
 
-    // Create new session ID to clear history
     this.sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     await AsyncStorage.setItem('@ai_session_id', this.sessionId);
   }
 
-  /**
-   * Get smart query suggestions based on conversation context
-   */
+  // Return predefined query suggestions (backend endpoint not available)
   async getQuerySuggestions(): Promise<string[]> {
-    // Return default suggestions since chatbot backend doesn't have this endpoint
     return [
       'How much did I spend this month?',
       'Show my budget status',
@@ -313,11 +285,7 @@ export class AIBackendClient {
     ];
   }
 
-  // Health and System Methods
-
-  /**
-   * Check backend health
-   */
+  // Verify backend service is running and healthy
   async checkHealth(): Promise<HealthResponse> {
     const response = await this.makeRequest<any>('/health');
     return {

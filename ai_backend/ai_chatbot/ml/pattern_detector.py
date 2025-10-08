@@ -1,5 +1,6 @@
 """
-Spending Pattern Detection Module
+Spending Pattern Detection Module.
+Identifies recurring patterns, spending spikes, volatility, trends, and seasonality in transaction data.
 """
 
 import pandas as pd
@@ -13,13 +14,14 @@ logger = logging.getLogger(__name__)
 
 class PatternDetector:
     """
-    Detect spending patterns, recurrences, and anomalies
+    Analyzes spending data to detect behavioral patterns.
+    Uses statistical methods including autocorrelation, Z-score analysis, and trend detection.
     """
 
     def __init__(self):
-        self.min_data_points = 14  # Minimum days for pattern detection
-        self.recurrence_threshold = 0.6  # 60% confidence for recurrence
-        self.spike_threshold = 2.0  # 2 standard deviations for spike detection (Z-score)
+        self.min_data_points = 14
+        self.recurrence_threshold = 0.6
+        self.spike_threshold = 2.0
         self.categories = [
             'Food', 'Beverage', 'Home', 'Shopping', 'Transport',
             'Entertainment', 'Beauty', 'Sports', 'Personal', 'Work',
@@ -28,7 +30,8 @@ class PatternDetector:
 
     def detect_patterns(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Detect all types of spending patterns using notebook methods
+        Run comprehensive pattern analysis on spending data.
+        Returns dictionary with recurrences, spikes, volatility, trends, and seasonality.
         """
         try:
             patterns = {
@@ -45,25 +48,13 @@ class PatternDetector:
                 logger.warning(f"Insufficient data for pattern detection: {len(df)} days")
                 return patterns
 
-            # Detect recurrence patterns (6-8, 13-15, 28-31 day patterns)
+            # Run all pattern detection methods
             patterns['recurrences'] = self._detect_recurrences(df)
-
-            # Detect spending spikes with Z-score analysis
             patterns['spikes'] = self._detect_spikes(df)
-
-            # Calculate volatility (coefficient of variation)
             patterns['volatility'] = self._calculate_volatility(df)
-
-            # Determine activity levels (inactive, occasional, regular)
             patterns['activity_levels'] = self._determine_activity_patterns(df)
-
-            # Detect trends
             patterns['trends'] = self._detect_trends(df)
-
-            # Detect seasonality
             patterns['seasonality'] = self._detect_seasonality(df)
-
-            # Add summary statistics
             patterns['summary'] = self._generate_summary(df, patterns)
 
             return patterns
@@ -74,11 +65,12 @@ class PatternDetector:
 
     def _detect_recurrences(self, df: pd.DataFrame) -> List[Dict]:
         """
-        Detect recurring spending patterns (weekly, bi-weekly, monthly)
+        Find recurring spending patterns using autocorrelation analysis.
+        Checks for weekly (6-8 day), bi-weekly (13-15 day), and monthly (28-31 day) patterns.
         """
         recurrences = []
 
-        # Check total spending and key categories
+        # Check total and key categories
         columns_to_check = ['total_daily']
         for cat in ['Food', 'Transport', 'Shopping', 'Bills']:
             if cat in df.columns:
@@ -90,73 +82,50 @@ class PatternDetector:
 
             series = df[column].fillna(0)
 
-            # Skip if mostly zeros
+            # Skip inactive categories
             if (series > 0).mean() < 0.1:
                 continue
 
-            # Check for weekly pattern (6-8 days)
-            weekly_pattern = self._check_periodicity(series, period_range=(6, 8))
-            if weekly_pattern['confidence'] > self.recurrence_threshold:
-                recurrences.append({
-                    'category': column.replace('total_daily', 'Total'),
-                    'pattern': 'weekly',
-                    'period': weekly_pattern['period'],
-                    'confidence': weekly_pattern['confidence'],
-                    'strength': weekly_pattern['strength'],
-                    'next_expected': self._predict_next_occurrence(df, weekly_pattern['period'])
-                })
-
-            # Check for bi-weekly pattern (13-15 days)
-            biweekly_pattern = self._check_periodicity(series, period_range=(13, 15))
-            if biweekly_pattern['confidence'] > self.recurrence_threshold:
-                recurrences.append({
-                    'category': column.replace('total_daily', 'Total'),
-                    'pattern': 'bi-weekly',
-                    'period': biweekly_pattern['period'],
-                    'confidence': biweekly_pattern['confidence'],
-                    'strength': biweekly_pattern['strength'],
-                    'next_expected': self._predict_next_occurrence(df, biweekly_pattern['period'])
-                })
-
-            # Check for monthly pattern (28-31 days)
-            monthly_pattern = self._check_periodicity(series, period_range=(28, 31))
-            if monthly_pattern['confidence'] > self.recurrence_threshold:
-                recurrences.append({
-                    'category': column.replace('total_daily', 'Total'),
-                    'pattern': 'monthly',
-                    'period': monthly_pattern['period'],
-                    'confidence': monthly_pattern['confidence'],
-                    'strength': monthly_pattern['strength'],
-                    'next_expected': self._predict_next_occurrence(df, monthly_pattern['period'])
-                })
+            # Check each period type
+            for pattern_name, period_range in [('weekly', (6, 8)), ('bi-weekly', (13, 15)), ('monthly', (28, 31))]:
+                pattern = self._check_periodicity(series, period_range=period_range)
+                if pattern['confidence'] > self.recurrence_threshold:
+                    recurrences.append({
+                        'category': column.replace('total_daily', 'Total'),
+                        'pattern': pattern_name,
+                        'period': pattern['period'],
+                        'confidence': pattern['confidence'],
+                        'strength': pattern['strength'],
+                        'next_expected': self._predict_next_occurrence(df, pattern['period'])
+                    })
 
         return recurrences
 
     def _check_periodicity(self, series: pd.Series,
                           period_range: Tuple[int, int]) -> Dict:
         """
-        Check for periodicity in a time series using autocorrelation
+        Detect periodic patterns using autocorrelation.
+        Compares time series to itself at various lags to find repeating cycles.
         """
         try:
-            # Remove trend for cleaner periodicity detection
+            # Remove linear trend for cleaner periodicity signal
             detrended = signal.detrend(series.values)
 
-            # Compute autocorrelation
+            # Compute autocorrelation function
             autocorr = np.correlate(detrended, detrended, mode='full')
             autocorr = autocorr[len(autocorr) // 2:]
-            autocorr = autocorr / autocorr[0]  # Normalize
+            autocorr = autocorr / autocorr[0]
 
-            # Find peaks in the specified period range
+            # Find best period in range
             best_period = 0
             best_confidence = 0
             best_strength = 0
 
             for period in range(period_range[0], period_range[1] + 1):
                 if period < len(autocorr):
-                    # Check autocorrelation at this lag
                     correlation = autocorr[period]
 
-                    # Check for multiple periods to confirm pattern
+                    # Check multiple periods for confirmation
                     if 2 * period < len(autocorr):
                         correlation2 = autocorr[2 * period]
                         avg_correlation = (correlation + correlation2) / 2
@@ -180,12 +149,12 @@ class PatternDetector:
 
     def _calculate_pattern_strength(self, series: pd.Series, period: int) -> float:
         """
-        Calculate the strength of a periodic pattern
+        Measure how consistently values repeat at the detected period.
+        Returns ratio of similar values at periodic intervals.
         """
         if period <= 0 or period >= len(series):
             return 0
 
-        # Compare values at period intervals
         matches = 0
         comparisons = 0
 
@@ -204,7 +173,8 @@ class PatternDetector:
 
     def _detect_spikes(self, df: pd.DataFrame) -> List[Dict]:
         """
-        Detect spending spikes (anomalies) using Z-score method from notebook
+        Identify spending anomalies using Z-score analysis.
+        Flags days where spending exceeds normal by multiple standard deviations.
         """
         spikes = []
 
@@ -213,24 +183,23 @@ class PatternDetector:
 
         series = df['total_daily'].fillna(0)
 
-        # Calculate rolling statistics
+        # Calculate rolling statistics for baseline
         rolling_mean = series.rolling(window=7, min_periods=1).mean()
         rolling_std = series.rolling(window=7, min_periods=2).std()
 
-        # Detect spikes using z-score
+        # Detect spikes using Z-score threshold
         for idx in range(len(series)):
             if idx < 7:
                 continue
 
             value = series.iloc[idx]
-            mean = rolling_mean.iloc[idx - 1]  # Use previous day's stats
+            mean = rolling_mean.iloc[idx - 1]
             std = rolling_std.iloc[idx - 1]
 
             if std > 0 and mean > 0:
                 z_score = (value - mean) / std
 
                 if z_score > self.spike_threshold:
-                    # Determine which categories contributed to spike
                     spike_categories = self._identify_spike_categories(df, idx)
 
                     spikes.append({
@@ -239,14 +208,15 @@ class PatternDetector:
                         'z_score': float(z_score),
                         'expected': float(mean),
                         'categories': spike_categories,
-                        'recent': idx >= len(series) - 7  # Within last week
+                        'recent': idx >= len(series) - 7
                     })
 
         return spikes
 
     def _identify_spike_categories(self, df: pd.DataFrame, idx: int) -> List[str]:
         """
-        Identify which categories contributed to a spending spike
+        Determine which categories contributed to a spending spike.
+        Returns categories with unusually high spending on the spike day.
         """
         spike_categories = []
 
@@ -255,22 +225,22 @@ class PatternDetector:
             if cat not in df.columns:
                 continue
 
-            # Check if this category had unusual spending
             cat_value = df[cat].iloc[idx]
             cat_mean = df[cat].rolling(window=7, min_periods=1).mean().iloc[idx - 1]
 
-            if cat_value > cat_mean * 1.5:  # 50% above average
+            if cat_value > cat_mean * 1.5:
                 spike_categories.append(cat)
 
         return spike_categories
 
     def _calculate_volatility(self, df: pd.DataFrame) -> Dict[str, float]:
         """
-        Calculate spending volatility for each category
+        Compute coefficient of variation (volatility) for each category.
+        Higher values indicate more unpredictable spending.
         """
         volatility = {}
 
-        # Calculate for total
+        # Calculate for total spending
         if 'total_daily' in df.columns:
             series = df['total_daily'].fillna(0)
             if series.mean() > 0:
@@ -278,15 +248,14 @@ class PatternDetector:
             else:
                 volatility['total'] = 0
 
-        # Calculate for each category
+        # Calculate for active categories
         categories = ['Food', 'Transport', 'Shopping', 'Entertainment', 'Bills']
         for cat in categories:
             if cat not in df.columns:
                 continue
 
             series = df[cat].fillna(0)
-            # Only calculate for active categories
-            if (series > 0).mean() > 0.1:  # Active >10% of days
+            if (series > 0).mean() > 0.1:
                 if series.mean() > 0:
                     volatility[cat] = float(series.std() / series.mean())
                 else:
@@ -296,7 +265,8 @@ class PatternDetector:
 
     def _determine_activity_patterns(self, df: pd.DataFrame) -> Dict[str, str]:
         """
-        Determine activity patterns for each spending category
+        Classify spending frequency for each category.
+        Returns labels like 'inactive', 'occasional', 'regular', 'frequent', or 'clustered'.
         """
         activity_patterns = {}
 
@@ -311,7 +281,7 @@ class PatternDetector:
             series = df[cat].fillna(0)
             activity_rate = (series > 0).mean()
 
-            # Classify activity level
+            # Classify based on frequency
             if activity_rate < 0.1:
                 pattern = 'inactive'
             elif activity_rate < 0.3:
@@ -321,10 +291,10 @@ class PatternDetector:
             else:
                 pattern = 'frequent'
 
-            # Check for clustering (bursty behavior)
+            # Check for bursty/clustered spending
             if pattern in ['occasional', 'regular']:
                 clusters = self._detect_clustering(series > 0)
-                if clusters > 0.3:  # High clustering
+                if clusters > 0.3:
                     pattern = f'{pattern}_clustered'
 
             activity_patterns[cat] = pattern
@@ -333,7 +303,8 @@ class PatternDetector:
 
     def _detect_clustering(self, binary_series: pd.Series) -> float:
         """
-        Detect if spending occurs in clusters (bursts)
+        Measure if spending occurs in bursts rather than evenly distributed.
+        Returns clustering score based on variance in run lengths.
         """
         if len(binary_series) < 7:
             return 0
@@ -350,9 +321,8 @@ class PatternDetector:
                 current_run = 1
         runs.append(current_run)
 
-        # Calculate clustering metric
+        # Higher variance indicates clustering
         if len(runs) > 1:
-            # Higher variance in run lengths indicates clustering
             clustering = np.std(runs) / (np.mean(runs) + 1e-6)
             return min(1, clustering)
         else:
@@ -360,34 +330,34 @@ class PatternDetector:
 
     def _detect_trends(self, df: pd.DataFrame) -> Dict[str, Dict]:
         """
-        Detect spending trends (increasing, decreasing, stable)
+        Identify spending trends over different time windows using linear regression.
+        Returns slope, confidence (R-value), and trend direction.
         """
         trends = {}
 
         if 'total_daily' not in df.columns or len(df) < 14:
             return trends
 
-        # Analyze total spending trend
         series = df['total_daily'].fillna(0)
 
-        # Calculate trend over different time windows
+        # Analyze trends at multiple timescales
         for window_name, window_size in [('short', 7), ('medium', 14), ('long', 30)]:
             if len(series) >= window_size:
                 recent = series.tail(window_size)
                 x = np.arange(len(recent))
                 y = recent.values
 
-                # Linear regression
+                # Fit linear regression
                 slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
 
-                # Normalize slope by mean value
+                # Normalize slope by mean
                 mean_value = y.mean()
                 if mean_value > 0:
                     normalized_slope = slope / mean_value
                 else:
                     normalized_slope = 0
 
-                # Classify trend
+                # Classify trend direction
                 if abs(normalized_slope) < 0.01:
                     trend = 'stable'
                 elif normalized_slope > 0.01:
@@ -406,18 +376,18 @@ class PatternDetector:
 
     def _detect_seasonality(self, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Detect seasonal patterns (day of week, month patterns)
+        Find day-of-week and monthly spending patterns.
+        Identifies peak spending days and monthly distribution (front-loaded, mid-heavy, end-loaded).
         """
         seasonality = {}
 
-        if len(df) < 28:  # Need at least 4 weeks
+        if len(df) < 28:
             return seasonality
 
-        # Day of week patterns
+        # Day of week analysis
         if 'day_of_week' in df.columns and 'total_daily' in df.columns:
             dow_spending = df.groupby('day_of_week')['total_daily'].agg(['mean', 'std', 'count'])
 
-            # Find peak spending days
             peak_day = dow_spending['mean'].idxmax()
             low_day = dow_spending['mean'].idxmin()
 
@@ -431,9 +401,8 @@ class PatternDetector:
                 'weekend_vs_weekday': self._calculate_weekend_ratio(df)
             }
 
-        # Month patterns (if enough data)
+        # Monthly pattern analysis
         if len(df) >= 60 and 'day_of_month' in df.columns:
-            # Check for start/end of month patterns
             start_month = df[df['day_of_month'] <= 5]['total_daily'].mean()
             mid_month = df[(df['day_of_month'] > 10) & (df['day_of_month'] <= 20)]['total_daily'].mean()
             end_month = df[df['day_of_month'] >= 25]['total_daily'].mean()
@@ -449,7 +418,8 @@ class PatternDetector:
 
     def _calculate_weekend_ratio(self, df: pd.DataFrame) -> float:
         """
-        Calculate ratio of weekend to weekday spending
+        Compare weekend vs weekday spending levels.
+        Returns ratio (1.0 = equal, >1.0 = higher on weekends).
         """
         if 'is_weekend' not in df.columns or 'total_daily' not in df.columns:
             return 1.0
@@ -464,11 +434,11 @@ class PatternDetector:
 
     def _classify_monthly_pattern(self, start: float, mid: float, end: float) -> str:
         """
-        Classify monthly spending pattern
+        Determine when in the month spending peaks.
+        Returns 'front-loaded', 'mid-heavy', or 'end-loaded'.
         """
         values = [start, mid, end]
-        max_val = max(values)
-        max_idx = values.index(max_val)
+        max_idx = values.index(max(values))
 
         if max_idx == 0:
             return 'front-loaded'
@@ -479,7 +449,8 @@ class PatternDetector:
 
     def _predict_next_occurrence(self, df: pd.DataFrame, period: int) -> str:
         """
-        Predict next occurrence based on period
+        Calculate expected date of next occurrence based on detected period.
+        Returns ISO format date string.
         """
         if 'date' not in df.columns or len(df) == 0:
             return ""
@@ -490,11 +461,12 @@ class PatternDetector:
 
     def _generate_summary(self, df: pd.DataFrame, patterns: Dict) -> Dict:
         """
-        Generate summary statistics from detected patterns
+        Create summary statistics from all detected patterns.
+        Aggregates pattern counts, activity levels, and volatility metrics.
         """
         summary = {}
 
-        # Overall spending summary
+        # Overall spending metrics
         if 'total_daily' in df.columns:
             summary['avg_daily_spend'] = float(df['total_daily'].mean())
             summary['median_daily_spend'] = float(df['total_daily'].median())
@@ -521,7 +493,8 @@ class PatternDetector:
 
     def generate_insights(self, patterns: Dict) -> List[str]:
         """
-        Generate human-readable insights from patterns
+        Convert pattern data into human-readable insights.
+        Returns list of key findings about spending behavior.
         """
         insights = []
 
@@ -568,4 +541,4 @@ class PatternDetector:
                     f"(${dow['peak_amount']:.0f})"
                 )
 
-        return insights[:5]  # Limit to top 5 insights
+        return insights[:5]

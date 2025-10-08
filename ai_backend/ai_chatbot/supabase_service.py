@@ -1,6 +1,8 @@
 """
-Supabase Database Service for AI Backend
-Replaces SQLite with cloud-based Supabase database
+Supabase Database Service for AI Backend.
+Provides cloud-based database operations for transactions, budgets, categories, and goals.
+Includes ML-specific methods for storing predictions, budgets, and patterns.
+Replaces local SQLite with cloud Supabase for multi-user support and real-time sync.
 """
 import os
 import logging
@@ -77,18 +79,29 @@ class Goal:
 
 class SupabaseService:
     """
-    Service for interacting with Supabase database
-    Provides the same interface as the original SQLite database service
+    Service for interacting with Supabase database.
+    Provides unified interface for database operations across transactions,
+    budgets, categories, goals, and ML data storage.
+    Maintains compatibility with original SQLite service interface.
     """
-    
+
     def __init__(self, user_id: str = DEFAULT_USER_ID):
-        """Initialize Supabase connection"""
+        """
+        Initialize Supabase connection for specific user.
+
+        Args:
+            user_id: User identifier for data filtering (default: "default-user")
+        """
         self.user_id = user_id
         self.client: Optional[Client] = None
         self._connect()
     
     def _connect(self):
-        """Establish connection to Supabase"""
+        """
+        Establish connection to Supabase using environment credentials.
+        Uses service key for backend operations (bypasses RLS policies).
+        Raises ValueError if credentials are missing.
+        """
         try:
             supabase_url = os.getenv("SUPABASE_URL")
             supabase_key = os.getenv("SUPABASE_SERVICE_KEY")  # Use service key for backend
@@ -104,7 +117,16 @@ class SupabaseService:
             raise
     
     def get_transactions_with_categories(self, limit: int = 1000) -> List[Transaction]:
-        """Get transactions with category names"""
+        """
+        Get transactions with category names joined from categories table.
+        Returns transactions ordered by date (most recent first).
+
+        Args:
+            limit: Maximum number of transactions to retrieve
+
+        Returns:
+            List of Transaction objects with category names
+        """
         try:
             response = (self.client
                        .table("transactions")
@@ -140,7 +162,14 @@ class SupabaseService:
             return []
     
     def get_budgets_with_details(self) -> List[Budget]:
-        """Get budgets with category names and calculated spending details"""
+        """
+        Get budgets with category names and calculated spending metrics.
+        Calculates spent_amount, remaining_amount, and percentage_used
+        by querying transactions within budget period.
+
+        Returns:
+            List of Budget objects with spending calculations
+        """
         try:
             # Get budgets with category names
             budget_response = (self.client

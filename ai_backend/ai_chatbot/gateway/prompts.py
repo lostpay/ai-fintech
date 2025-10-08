@@ -1,8 +1,9 @@
 """
-Prompts and few-shot examples for the chatbot
+Prompts and few-shot examples for the chatbot.
+Provides SQL examples and system prompts for different languages and contexts.
 """
 
-# Few-shot examples for Text2SQL
+# Few-shot examples demonstrating SQL query patterns for natural language queries
 SQL_EXAMPLES = [
     {
         "zh": {
@@ -66,7 +67,7 @@ SQL_EXAMPLES = [
     }
 ]
 
-# System prompts for different contexts
+# System prompts defining AI assistant behavior for different contexts
 SYSTEM_PROMPTS = {
     "zh": {
         "main": """你是一个专业的个人财务助理 AI。你的职责是：
@@ -133,7 +134,16 @@ Focus on:
 }
 
 def get_few_shot_examples(lang: str = "zh", max_examples: int = 3):
-    """Get few-shot examples for the specified language"""
+    """
+    Retrieve few-shot SQL examples for a specified language.
+
+    Args:
+        lang: Language code ('zh' or 'en')
+        max_examples: Maximum number of examples to return
+
+    Returns:
+        List of example dictionaries containing query, SQL, and explanation
+    """
     examples = []
     for example in SQL_EXAMPLES[:max_examples]:
         if lang in example:
@@ -141,10 +151,20 @@ def get_few_shot_examples(lang: str = "zh", max_examples: int = 3):
     return examples
 
 def format_sql_prompt(query: str, lang: str = "zh") -> str:
-    """Format prompt for SQL generation with few-shot examples"""
+    """
+    Build a prompt for SQL generation by combining system context with few-shot examples.
+
+    Args:
+        query: User's natural language query
+        lang: Language code for localization
+
+    Returns:
+        Formatted prompt string ready for LLM input
+    """
     examples = get_few_shot_examples(lang)
     prompt = SYSTEM_PROMPTS[lang]["sql_context"] + "\n\n"
 
+    # Include examples to guide the LLM's SQL generation
     if examples:
         prompt += "Examples:\n"
         for ex in examples:

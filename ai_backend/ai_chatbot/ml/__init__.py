@@ -1,5 +1,7 @@
 """
-ML Forecasting and Budgeting Module
+ML Forecasting and Budgeting Module.
+Provides spending prediction, budget generation, pattern detection,
+and feature engineering for financial analysis.
 """
 
 from .predictor import SpendingPredictor
