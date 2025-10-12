@@ -7,9 +7,13 @@ export default {
     version: '1.0.0',
     orientation: 'portrait',
     icon: './src/assets/images/epz1ksqf7xy81.jpg',
-    scheme: 'app',
+    scheme: 'myfinanceapp',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
+    // Deep linking configuration
+    deep: {
+      links: ['myfinanceapp://', 'https://yourapp.com'],
+    },
     ios: {
       supportsTablet: true,
     },

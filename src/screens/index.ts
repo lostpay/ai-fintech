@@ -6,5 +6,9 @@ export { HistoryScreen } from './HistoryScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { BudgetScreen } from './BudgetScreen';
 export { CategoriesScreen } from './CategoriesScreen';
-export { default as BudgetAnalyticsScreen } from './BudgetAnalyticsScreen';
 export { default as SimpleChatScreen } from './SimpleChatScreen';
+
+// Auth screens
+export { LoginScreen } from './LoginScreen';
+export { SignUpScreen } from './SignUpScreen';
+export { ForgotPasswordScreen } from './ForgotPasswordScreen';

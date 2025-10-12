@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DatabaseService } from '../services/DatabaseService';
+import { BudgetRolloverService } from '../services/BudgetRolloverService';
 import { Budget, CreateBudgetRequest } from '../types/Budget';
 
 interface BudgetWithDetails {
@@ -25,14 +26,17 @@ interface UseBudgetsReturn {
   updateBudget: (id: number, budgetData: Partial<CreateBudgetRequest>) => Promise<void>;
   deleteBudget: (id: number) => Promise<void>;
   refreshBudgets: () => Promise<void>;
+  rolloverBudgets: () => Promise<number>;
 }
 
 const databaseService = DatabaseService.getInstance();
+const rolloverService = new BudgetRolloverService(databaseService);
 
 export const useBudgets = (): UseBudgetsReturn => {
   const [budgets, setBudgets] = useState<BudgetWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const rolloverChecked = useRef(false);
 
   const initializeDatabase = useCallback(async () => {
     try {
@@ -45,9 +49,35 @@ export const useBudgets = (): UseBudgetsReturn => {
     }
   }, []);
 
+  const rolloverBudgets = useCallback(async (): Promise<number> => {
+    try {
+      await initializeDatabase();
+      const count = await rolloverService.checkAndRolloverBudgets();
+      return count;
+    } catch (err: any) {
+      console.error('Failed to rollover budgets:', err);
+      throw err;
+    }
+  }, [initializeDatabase]);
+
   const loadBudgets = useCallback(async () => {
     try {
       await initializeDatabase();
+
+      // Check and rollover budgets automatically on first load
+      if (!rolloverChecked.current) {
+        try {
+          const rolledOverCount = await rolloverService.checkAndRolloverBudgets();
+          if (rolledOverCount > 0) {
+            console.log(`Auto-rolled over ${rolledOverCount} budgets to current month`);
+          }
+          rolloverChecked.current = true;
+        } catch (rolloverErr) {
+          console.error('Failed to auto-rollover budgets:', rolloverErr);
+          // Continue loading budgets even if rollover fails
+        }
+      }
+
       const budgetDetails = await databaseService.getBudgetsWithDetails();
       setBudgets(budgetDetails);
       setError(null);
@@ -134,5 +164,6 @@ export const useBudgets = (): UseBudgetsReturn => {
     updateBudget,
     deleteBudget,
     refreshBudgets,
+    rolloverBudgets,
   };
 };

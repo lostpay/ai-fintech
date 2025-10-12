@@ -1,4 +1,2 @@
 // Chart components barrel export
-export { default as BudgetPerformanceChart } from './BudgetPerformanceChart';
-export { default as SpendingTrendChart } from './SpendingTrendChart';
-export { default as CategoryBreakdownChart } from './CategoryBreakdownChart';
+// Note: Chart components have been removed as they were only used in the analytics screen

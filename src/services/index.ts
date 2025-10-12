@@ -7,7 +7,7 @@ import { ShareService } from './ShareService';
 import { ExportProgressService } from './ExportProgressService';
 import { BudgetCalculationService } from './BudgetCalculationService';
 import { BudgetAlertService } from './BudgetAlertService';
-import { BudgetAnalyticsService } from './BudgetAnalyticsService';
+import { BudgetRolloverService } from './BudgetRolloverService';
 
 // *** TEMPORARY MIGRATION COMMENT ***
 // The app is currently migrating from SQLite (DatabaseService) to Supabase (SupabaseService)
@@ -32,20 +32,20 @@ export const budgetCalculationService = new BudgetCalculationService(databaseSer
 // Create a singleton instance of BudgetAlertService
 export const budgetAlertService = new BudgetAlertService(databaseService, budgetCalculationService);
 
-// Create a singleton instance of BudgetAnalyticsService
-export const budgetAnalyticsService = new BudgetAnalyticsService(databaseService, budgetCalculationService);
+// Create a singleton instance of BudgetRolloverService
+export const budgetRolloverService = new BudgetRolloverService(databaseService);
 
 // Export the service classes as well for testing
-export { 
+export {
   DatabaseService,
-  SupabaseService, 
+  SupabaseService,
   DataExportService,
   FileSystemService,
   ShareService,
   ExportProgressService,
-  BudgetCalculationService, 
+  BudgetCalculationService,
   BudgetAlertService,
-  BudgetAnalyticsService 
+  BudgetRolloverService
 };
 
 // Export types

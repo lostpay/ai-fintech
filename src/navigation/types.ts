@@ -15,12 +15,12 @@ export type RootTabParamList = {
 
 export type RootStackParamList = {
   Main: undefined;
+  Auth: undefined;
   Categories: undefined;
   CategoryForm: {
     mode: 'create' | 'edit';
     category?: Category
   };
-  BudgetAnalytics: undefined;
   AIAssistant: undefined;
   EditTransaction: {
     transaction: any;

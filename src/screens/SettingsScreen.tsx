@@ -1,26 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Snackbar } from 'react-native-paper';
+import { Snackbar, Button } from 'react-native-paper';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { RootTabParamList } from '../navigation/types';
-import { 
-  SettingsSection, 
-  ThemeToggleItem, 
+import {
+  SettingsSection,
+  ThemeToggleItem,
   CategoryManagementItem,
-  AppInfoSection, 
-  AboutSection 
+  AppInfoSection,
+  AboutSection
 } from '../components/settings';
 import { DataExportCard } from '../components/settings/DataExportCard';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
 type Props = BottomTabScreenProps<RootTabParamList, 'Settings'>;
 
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const { theme, isDarkMode, toggleTheme } = useTheme();
+  const { signOut, user } = useAuth();
   const stackNavigation = useNavigation();
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     // Screen initialization placeholder
@@ -31,6 +34,33 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     stackNavigation.navigate('Categories' as never);
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoggingOut(true);
+              await signOut();
+            } catch (error) {
+              console.error('Logout error:', error);
+              showSnackbar('Failed to sign out. Please try again.');
+            } finally {
+              setLoggingOut(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const showSnackbar = (message: string) => {
     setSnackbarMessage(message);
@@ -61,10 +91,30 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
         </SettingsSection>
 
         {/* About Section */}
-        <SettingsSection title="About" showDivider={false}>
+        <SettingsSection title="About">
           <AboutSection />
         </SettingsSection>
-        
+
+        {/* Account Section */}
+        {user && (
+          <SettingsSection title="Account" showDivider={false}>
+            <View style={styles.accountSection}>
+              <Button
+                mode="outlined"
+                onPress={handleLogout}
+                loading={loggingOut}
+                disabled={loggingOut}
+                icon="logout"
+                style={styles.logoutButton}
+                contentStyle={styles.logoutButtonContent}
+                textColor={theme.colors.error}
+              >
+                Sign Out
+              </Button>
+            </View>
+          </SettingsSection>
+        )}
+
       </ScrollView>
 
       <Snackbar
@@ -89,5 +139,15 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
     paddingTop: 8,
+  },
+  accountSection: {
+    padding: 16,
+  },
+  logoutButton: {
+    borderColor: '#D32F2F',
+    borderWidth: 1,
+  },
+  logoutButtonContent: {
+    paddingVertical: 8,
   },
 });
