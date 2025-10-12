@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import Dict, Any
 
 # Configuration
-GATEWAY_URL = "http://127.0.0.1:7000"
-ML_URL = "http://127.0.0.1:7003"
+GATEWAY_URL = "http://192.168.1.103:7000"
+ML_URL = "http://192.168.1.103:7003"
 TEST_USER_ID = "default-user"
 
 # Test messages for different ML features

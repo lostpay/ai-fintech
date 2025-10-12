@@ -5,7 +5,7 @@ import { TransactionWithCategory } from '../../types/Transaction';
 import { formatCurrency, formatCurrencyWithSign } from '../../utils/currency';
 import { formatDateWithRelative } from '../../utils/date';
 import { TransactionOptionsModal } from '../modals/TransactionOptionsModal';
-import { databaseService } from '../../services';
+import { useDatabaseService } from '../../hooks/useDatabaseService';
 
 interface RecentTransactionsListProps {
   transactions: TransactionWithCategory[];
@@ -22,6 +22,7 @@ export const RecentTransactionsList: React.FC<RecentTransactionsListProps> = ({
   onEdit,
   onRefresh,
 }) => {
+  const databaseService = useDatabaseService();
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionWithCategory | null>(null);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
 

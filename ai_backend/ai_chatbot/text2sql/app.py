@@ -282,7 +282,8 @@ async def startup_event():
     global supabase_service
     try:
         # Test Supabase connection before accepting requests
-        test_service = SupabaseService()
+        # Use a test user ID for health check
+        test_service = SupabaseService(user_id="health-check-user")
         health = test_service.get_database_health()
         if health["status"] == "healthy":
             supabase_service = test_service
@@ -300,19 +301,21 @@ async def health_check():
     Health check endpoint for service monitoring.
     Returns service status and database health information.
     """
-    if not supabase_service:
+    try:
+        # Create a temporary service for health check
+        test_service = SupabaseService(user_id="health-check-user")
+        health = test_service.get_database_health()
+        return {
+            "status": health["status"],
+            "service": "text2sql",
+            "database": health
+        }
+    except Exception as e:
         return {
             "status": "unhealthy",
             "service": "text2sql",
-            "error": "Supabase service not initialized"
+            "error": str(e)
         }
-
-    health = supabase_service.get_database_health()
-    return {
-        "status": health["status"],
-        "service": "text2sql",
-        "database": health
-    }
 
 @app.post("/generate", response_model=SQLResponse)
 async def generate_sql(request: SQLRequest):

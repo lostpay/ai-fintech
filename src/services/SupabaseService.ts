@@ -1,10 +1,13 @@
-import { supabase, DEFAULT_USER_ID, Database } from '../config/supabase';
+import { supabase, Database } from '../config/supabase';
 import { Transaction, Category, Budget, Goal } from '../types';
 
 export class SupabaseService {
   private userId: string;
 
-  constructor(userId: string = DEFAULT_USER_ID) {
+  constructor(userId: string) {
+    if (!userId) {
+      throw new Error('SupabaseService requires a valid userId');
+    }
     this.userId = userId;
   }
 

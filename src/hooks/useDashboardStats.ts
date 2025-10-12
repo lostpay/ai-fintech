@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { TransactionWithCategory } from '../types/Transaction';
-import { DatabaseService } from '../services/DatabaseService';
+import { useDatabaseService } from './useDatabaseService';
 import { formatCurrency } from '../utils/currency';
 
 export interface DashboardData {
@@ -21,12 +21,11 @@ export interface DashboardStats {
 }
 
 export const useDashboardStats = (): DashboardStats => {
+  const databaseService = useDatabaseService();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-
-  const databaseService = DatabaseService.getInstance();
 
   const calculateDashboardMetrics = async (): Promise<DashboardData> => {
     const currentDate = new Date();
@@ -80,7 +79,7 @@ export const useDashboardStats = (): DashboardStats => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [databaseService]);
 
   const refreshDashboard = useCallback(async () => {
     try {
@@ -95,7 +94,7 @@ export const useDashboardStats = (): DashboardStats => {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [databaseService]);
 
   // Load data on mount
   useEffect(() => {

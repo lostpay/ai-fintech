@@ -12,16 +12,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // For now, we'll use anonymous access with user_id as a string
-    // Later this can be upgraded to proper Supabase auth
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
   },
 });
-
-// Default user ID for single-user mode (can be customized later)
-export const DEFAULT_USER_ID = 'default-user';
 
 // Database type definitions for Supabase
 export type Database = {

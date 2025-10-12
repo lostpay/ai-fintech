@@ -46,7 +46,8 @@ export interface ExportMetadata {
   exportOptions: ExportOptions;
 }
 
-const databaseService = DatabaseService.getInstance();
+// Module-level service instances removed - use DataExportService with useDatabaseService() hook in components
+// const databaseService = DatabaseService.getInstance();
 const fileSystemService = new FileSystemService();
 const shareService = new ShareService();
 const progressService = new ExportProgressService();
@@ -564,10 +565,10 @@ export class DataExportService {
   }
 }
 
-// Export singleton instance
-export const dataExportService = new DataExportService(
-  databaseService,
-  fileSystemService,
-  shareService,
-  progressService
-);
+// Singleton instance removed - use DataExportService with useDatabaseService() hook in components
+// export const dataExportService = new DataExportService(
+//   databaseService,
+//   fileSystemService,
+//   shareService,
+//   progressService
+// );

@@ -6,11 +6,11 @@ import referenceData from '../../reference/financeflow_export_20250812.json';
 
 export class DatabaseTester {
   // Verify database initialization and test basic CRUD operations
-  static async testDatabaseConnection(): Promise<void> {
+  static async testDatabaseConnection(userId: string = 'test-user'): Promise<void> {
     try {
       console.log('Testing database connection...');
 
-      const dbService = DatabaseService.getInstance();
+      const dbService = new DatabaseService(userId);
 
       await dbService.initialize();
       console.log('Database initialized successfully');
@@ -56,11 +56,11 @@ export class DatabaseTester {
   }
 
   // Compare database counts against expected reference data
-  static async verifyDataIntegrity(): Promise<void> {
+  static async verifyDataIntegrity(userId: string = 'test-user'): Promise<void> {
     try {
       console.log('Verifying data integrity...');
 
-      const dbService = DatabaseService.getInstance();
+      const dbService = new DatabaseService(userId);
       const migrationService = DataMigrationService.getInstance();
 
       const stats = await migrationService.getReferenceDataStats();

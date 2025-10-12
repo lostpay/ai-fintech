@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { BudgetProgress, UnbudgetedSpending } from '../types/Budget';
 import { BudgetCalculationService } from '../services/BudgetCalculationService';
-import { databaseService } from '../services';
+import { useDatabaseService } from './useDatabaseService';
 import { 
   onTransactionChanged, 
   onBudgetChanged, 
@@ -22,6 +22,7 @@ interface UseBudgetProgressReturn {
 }
 
 export const useBudgetProgress = (): UseBudgetProgressReturn => {
+  const databaseService = useDatabaseService();
   const [budgetProgress, setBudgetProgress] = useState<BudgetProgress[]>([]);
   const [unbudgetedSpending, setUnbudgetedSpending] = useState<UnbudgetedSpending[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export const useBudgetProgress = (): UseBudgetProgressReturn => {
   // Create service instance (memoized to avoid recreation)
   const budgetCalculationService = useMemo(
     () => new BudgetCalculationService(databaseService),
-    []
+    [databaseService]
   );
 
   // Main function to refresh budget progress
@@ -142,13 +143,14 @@ interface UseSpecificBudgetProgressReturn {
 }
 
 export const useSpecificBudgetProgress = (budgetId: number): UseSpecificBudgetProgressReturn => {
+  const databaseService = useDatabaseService();
   const [budgetProgress, setBudgetProgress] = useState<BudgetProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const budgetCalculationService = useMemo(
     () => new BudgetCalculationService(databaseService),
-    []
+    [databaseService]
   );
 
   const refreshBudgetProgress = useCallback(async () => {

@@ -45,18 +45,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize ML service components
-supabase = SupabaseService()
-data_processor = DataProcessor()
-predictor = SpendingPredictor()
-budget_generator = BudgetGenerator()
-advanced_budget_generator = AdvancedBudgetGenerator()
-pattern_detector = PatternDetector()
-forecaster = FinanceForecaster()
-
 # Prediction cache with 15 minute TTL
 prediction_cache = {}
 CACHE_TTL = 900
+
+# Helper function to create user-specific Supabase service
+def get_supabase_service(user_id: str) -> SupabaseService:
+    """Create a SupabaseService instance for the authenticated user"""
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    return SupabaseService(user_id)
 
 # API request models
 class PredictionRequest(BaseModel):
@@ -132,6 +130,12 @@ async def predict_spending(request: PredictionRequest):
     Uses advanced forecaster for daily/weekly predictions with fallback to basic predictor.
     """
     try:
+        # Create user-specific service
+        supabase = get_supabase_service(request.user_id)
+        data_processor = DataProcessor()
+        predictor = SpendingPredictor()
+        forecaster_instance = FinanceForecaster()
+
         # Check cache first
         cache_key = get_cache_key(request.user_id, "predict", request.timeframe)
         if cache_key in prediction_cache and is_cache_valid(prediction_cache[cache_key]):
@@ -171,7 +175,7 @@ async def predict_spending(request: PredictionRequest):
         use_fallback = False
         try:
             if request.timeframe in ['daily', 'weekly']:
-                forecast_output = forecaster.forecast_from_transactions(
+                forecast_output = forecaster_instance.forecast_from_transactions(
                     df,
                     horizon_days=14 if request.timeframe == 'daily' else 28
                 )
@@ -290,6 +294,13 @@ async def predict_spending(request: PredictionRequest):
 async def recommend_budget(request: BudgetRequest):
     """Generate personalized budget recommendations based on spending history"""
     try:
+        # Create user-specific service
+        supabase = get_supabase_service(request.user_id)
+        data_processor = DataProcessor()
+        budget_generator_instance = BudgetGenerator()
+        advanced_budget_generator_instance = AdvancedBudgetGenerator()
+        pattern_detector_instance = PatternDetector()
+
         # Parse target month
         if request.month:
             target_date = datetime.strptime(request.month, "%Y-%m")
@@ -303,39 +314,81 @@ async def recommend_budget(request: BudgetRequest):
             return prediction_cache[cache_key]['data']
 
         # Fetch transaction history
+        logger.info(f"Fetching transactions for user_id: {request.user_id}")
         transactions = await supabase.get_user_transactions(
             request.user_id,
             days_back=90
         )
+        logger.info(f"Found {len(transactions)} transactions for user {request.user_id}")
 
         if not transactions:
-            # Provide default budget for new users
-            default_budget = advanced_budget_generator._get_default_monthly_budget()
+            # No transactions at all - return empty budget with warning
+            logger.warning(f"No transactions found for user {request.user_id}")
             return BudgetResponse(
-                categories=default_budget['categories'],
-                total_budget=default_budget['total'],
+                categories=[],
+                total_budget=0.0,
                 period=target_date.strftime("%Y-%m"),
-                methodology={"type": "default", "reason": "new_user"}
+                methodology={
+                    "type": "insufficient_data",
+                    "reason": "no_transactions",
+                    "warning": "No transaction history found. Please add transactions to get budget recommendations."
+                }
             )
 
         # Process and analyze transaction data
         df = pd.DataFrame(transactions)
-        processed_data = data_processor.prepare_features(df)
-        patterns = pattern_detector.detect_patterns(processed_data)
 
-        # Generate budget using advanced generator
-        if target_date.day == 1:
-            budget_data = advanced_budget_generator.generate_monthly_budget(processed_data)
+        # Calculate data quality metrics
+        num_days = len(df['date'].unique()) if 'date' in df.columns else 0
+        num_transactions = len(transactions)
+
+        logger.info(f"Budget data quality: {num_days} unique days, {num_transactions} transactions")
+
+        # Determine if we have sufficient data for accurate predictions
+        has_sufficient_data = num_days >= 30
+
+        # If insufficient data, use simple aggregation instead of advanced algorithms
+        if not has_sufficient_data:
+            logger.info(f"Insufficient data ({num_days} days), using simple aggregation of actual spending")
+            budget_data = _generate_simple_budget_from_transactions(df, target_date)
         else:
-            budget_data = advanced_budget_generator.generate_weekly_budget(processed_data)
+            # Use advanced algorithms when we have sufficient data
+            try:
+                processed_data = data_processor.prepare_features(df)
+                patterns = pattern_detector_instance.detect_patterns(processed_data)
 
-        # Fallback to basic generator if advanced fails
-        if 'categories' not in budget_data:
-            budget_data = budget_generator.generate_budget(
-                processed_data,
-                patterns,
-                target_month=target_date
+                # Generate budget using advanced generator
+                if target_date.day == 1:
+                    budget_data = advanced_budget_generator_instance.generate_monthly_budget(processed_data)
+                else:
+                    budget_data = advanced_budget_generator_instance.generate_weekly_budget(processed_data)
+
+                # Fallback to basic generator if advanced fails
+                if 'categories' not in budget_data:
+                    budget_data = budget_generator_instance.generate_budget(
+                        processed_data,
+                        patterns,
+                        target_month=target_date
+                    )
+            except Exception as e:
+                logger.warning(f"Budget generation failed, using simple aggregation: {e}")
+                # Fallback: Simple aggregation of actual spending
+                budget_data = _generate_simple_budget_from_transactions(df, target_date)
+
+        # Add data quality warning to methodology if insufficient data
+        if 'methodology' not in budget_data:
+            budget_data['methodology'] = {}
+
+        if not has_sufficient_data:
+            budget_data['methodology']['warning'] = (
+                f"Limited data ({num_days} days of transactions). "
+                f"Recommendations may be inaccurate. Add more transaction history (30+ days) for better predictions."
             )
+            budget_data['methodology']['data_quality'] = 'insufficient'
+            budget_data['methodology']['days_of_data'] = num_days
+        else:
+            budget_data['methodology']['data_quality'] = 'sufficient'
+            budget_data['methodology']['days_of_data'] = num_days
 
         response = BudgetResponse(
             categories=budget_data['categories'],
@@ -362,10 +415,83 @@ async def recommend_budget(request: BudgetRequest):
         logger.error(f"Budget generation error for user {request.user_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _generate_simple_budget_from_transactions(df: pd.DataFrame, target_date: datetime) -> Dict:
+    """
+    Generate a simple budget based on actual spending aggregation.
+    Used as fallback when advanced algorithms fail due to insufficient data.
+    """
+    try:
+        # Group by category and sum amounts
+        category_spending = {}
+        for _, row in df.iterrows():
+            category = row.get('category', 'Other')
+            amount = row.get('amount', 0) / 100.0  # Convert from cents
+            if category in category_spending:
+                category_spending[category] += amount
+            else:
+                category_spending[category] = amount
+
+        # Calculate total spending
+        total_spending = sum(category_spending.values())
+
+        # Calculate number of days in data
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+            num_days = (df['date'].max() - df['date'].min()).days + 1
+        else:
+            num_days = 1
+
+        # Project to monthly if we have less than a month of data
+        if num_days < 30:
+            projection_factor = 30.0 / max(num_days, 1)
+        else:
+            projection_factor = 1.0
+
+        # Create category budgets
+        categories = []
+        for category, amount in sorted(category_spending.items(), key=lambda x: x[1], reverse=True):
+            projected_amount = amount * projection_factor
+            categories.append({
+                'category': category,
+                'amount': round(projected_amount, 2),
+                'actual_spending': round(amount, 2),
+                'days_of_data': num_days,
+                'activity': 'actual_data'
+            })
+
+        return {
+            'categories': categories,
+            'total': round(total_spending * projection_factor, 2),
+            'period': 'monthly',
+            'methodology': {
+                'type': 'simple_aggregation',
+                'approach': 'Actual spending aggregated by category',
+                'projection_factor': projection_factor,
+                'data_days': num_days
+            }
+        }
+    except Exception as e:
+        logger.error(f"Simple budget generation failed: {e}")
+        # Return empty budget as last resort
+        return {
+            'categories': [],
+            'total': 0.0,
+            'period': 'monthly',
+            'methodology': {
+                'type': 'error',
+                'error': str(e)
+            }
+        }
+
 @app.post("/patterns", response_model=PatternResponse)
 async def analyze_patterns(request: PatternRequest):
     """Identify recurring expenses, spending spikes, and behavior patterns"""
     try:
+        # Create user-specific service
+        supabase = get_supabase_service(request.user_id)
+        data_processor = DataProcessor()
+        pattern_detector_instance = PatternDetector()
+
         # Check cache
         cache_key = get_cache_key(request.user_id, "patterns", str(request.lookback_days))
         if cache_key in prediction_cache and is_cache_valid(prediction_cache[cache_key]):
@@ -387,8 +513,8 @@ async def analyze_patterns(request: PatternRequest):
         # Process and analyze patterns
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
-        patterns = pattern_detector.detect_patterns(processed_data)
-        insights = pattern_detector.generate_insights(patterns)
+        patterns = pattern_detector_instance.detect_patterns(processed_data)
+        insights = pattern_detector_instance.generate_insights(patterns)
 
         response = PatternResponse(
             recurrences=patterns.get('recurrences', []),
@@ -419,6 +545,11 @@ async def analyze_patterns(request: PatternRequest):
 async def check_overspending(request: OverspendingRequest):
     """Predict likelihood of exceeding budget based on spending trends"""
     try:
+        # Create user-specific service
+        supabase = get_supabase_service(request.user_id)
+        data_processor = DataProcessor()
+        predictor_instance = SpendingPredictor()
+
         # Fetch transaction history
         transactions = await supabase.get_user_transactions(
             request.user_id,
@@ -438,7 +569,7 @@ async def check_overspending(request: OverspendingRequest):
         df = pd.DataFrame(transactions)
         processed_data = data_processor.prepare_features(df)
         budget_data = {'total': request.budget_total} if request.budget_total else None
-        result = predictor.check_overspending(processed_data, budget_data)
+        result = predictor_instance.check_overspending(processed_data, budget_data)
 
         return OverspendingResponse(
             overspending=result['overspending'],

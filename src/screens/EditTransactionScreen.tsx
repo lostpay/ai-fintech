@@ -21,7 +21,7 @@ import DatePickerInput from '../components/forms/DatePickerInput';
 
 // Hooks and Services
 import { useExpenseForm } from '../hooks/useExpenseForm';
-import { DatabaseService } from '../services/DatabaseService';
+import { useDatabaseService } from '../hooks/useDatabaseService';
 import { Category } from '../types/Category';
 import { useTheme } from '../context/ThemeContext';
 
@@ -44,7 +44,7 @@ export const EditTransactionScreen: React.FC = () => {
   const [loadingCategories, setLoadingCategories] = useState(true);
 
   // Database service
-  const databaseService = DatabaseService.getInstance();
+  const databaseService = useDatabaseService();
 
   // Form hook with initial data
   const {

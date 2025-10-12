@@ -1,18 +1,19 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { 
-  Text, 
-  FAB, 
-  Switch, 
-  Divider, 
-  List, 
+import {
+  Text,
+  FAB,
+  Switch,
+  Divider,
+  List,
   useTheme,
   Appbar,
-  Searchbar 
+  Searchbar
 } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { Category, CategoryUsageStats } from '../types/Category';
-import { categoryService } from '../services/CategoryService';
+import { CategoryService } from '../services/CategoryService';
+import { useDatabaseService } from '../hooks/useDatabaseService';
 import { CategoryListItem } from '../components/categories/CategoryListItem';
 import { CategoryForm } from '../components/forms/CategoryForm';
 import { onCategoryChanged, offCategoryChanged } from '../utils/eventEmitter';
@@ -27,6 +28,13 @@ interface CategoriesScreenProps {
  */
 export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }) => {
   const theme = useTheme();
+
+  // Services
+  const databaseService = useDatabaseService();
+  const categoryService = useMemo(
+    () => new CategoryService(databaseService),
+    [databaseService]
+  );
 
   // State management
   const [categories, setCategories] = useState<Category[]>([]);
@@ -45,14 +53,14 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({ navigation }
         categoryService.getCategories(),
         categoryService.getCategoryUsageStats(),
       ]);
-      
+
       setCategories(categoriesData);
       setUsageStats(statsData);
     } catch (error) {
       console.error('Failed to load categories:', error);
       Alert.alert('Error', 'Failed to load categories. Please try again.');
     }
-  }, []);
+  }, [categoryService]);
 
   /**
    * Load categories when screen focuses

@@ -15,10 +15,10 @@ import time
 init()
 
 # Configuration
-GATEWAY_URL = "http://localhost:7000"
-ML_URL = "http://localhost:7003"
-TEXT2SQL_URL = "http://localhost:7001"
-RAG_URL = "http://localhost:7002"
+GATEWAY_URL = "http://192.168.1.103:7000"
+ML_URL = "http://192.168.1.103:7003"
+TEXT2SQL_URL = "http://192.168.1.103:7001"
+RAG_URL = "http://192.168.1.103:7002"
 
 # Update this with your actual user ID from database
 USER_ID = "default-user"  # CHANGE THIS TO YOUR USER ID

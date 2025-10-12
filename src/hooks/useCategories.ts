@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Category, CreateCategoryRequest } from '../types/Category';
-import { databaseService } from '../services';
+import { useDatabaseService } from './useDatabaseService';
 
 interface UseCategoriesReturn {
   categories: Category[];
@@ -11,6 +11,7 @@ interface UseCategoriesReturn {
 }
 
 export const useCategories = (): UseCategoriesReturn => {
+  const databaseService = useDatabaseService();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export const useCategories = (): UseCategoriesReturn => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [databaseService]);
 
   const refreshCategories = useCallback(async () => {
     await loadCategories();
@@ -56,7 +57,7 @@ export const useCategories = (): UseCategoriesReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   // Load categories on mount
   useEffect(() => {

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, TextInput, Button, useTheme, Divider } from 'react-native-paper';
 import { Category, CategoryFormData } from '../../types/Category';
-import { categoryService } from '../../services/CategoryService';
+import { CategoryService } from '../../services/CategoryService';
+import { useDatabaseService } from '../../hooks/useDatabaseService';
 import { ColorPicker } from './ColorPicker';
 import { IconPicker } from './IconPicker';
 
@@ -27,6 +28,13 @@ export const CategoryForm: React.FC<CategoryFormProps> = ({
 }) => {
   const theme = useTheme();
   const isEditMode = mode === 'edit';
+
+  // Services
+  const databaseService = useDatabaseService();
+  const categoryService = useMemo(
+    () => new CategoryService(databaseService),
+    [databaseService]
+  );
 
   // Form state
   const [formData, setFormData] = useState<CategoryFormData>({

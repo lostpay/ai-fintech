@@ -29,7 +29,7 @@ import DatePickerInput from '../components/forms/DatePickerInput';
 // Hooks and Services
 import { useExpenseForm } from '../hooks/useExpenseForm';
 import { useBudgetAlerts } from '../hooks/useBudgetAlerts';
-import { DatabaseService } from '../services/DatabaseService';
+import { useDatabaseService } from '../hooks/useDatabaseService';
 import { Category } from '../types/Category';
 import { BudgetAlert as BudgetAlertType } from '../types/BudgetAlert';
 import { useTheme } from '../context/ThemeContext';
@@ -78,9 +78,9 @@ export const AddExpenseScreen: React.FC<AddExpenseScreenProps> = () => {
 
   // Track which alerts have been shown to prevent duplicates
   const shownAlertIds = useRef(new Set<string>()).current;
-  
+
   // Database service
-  const databaseService = DatabaseService.getInstance();
+  const databaseService = useDatabaseService();
   
   // Budget alerts hook
   const { alerts } = useBudgetAlerts();

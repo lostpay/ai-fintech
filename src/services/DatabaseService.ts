@@ -14,25 +14,19 @@ import { emitTransactionChanged } from '../utils/eventEmitter';
 import { SupabaseService } from './SupabaseService';
 
 export class DatabaseService {
-  private static instance: DatabaseService;
   private supabaseService: SupabaseService;
   private isInitialized = false;
   private categoriesCache: Category[] = [];
   private cacheUpdated = false;
+  private userId: string;
 
-  // Private constructor to prevent direct instantiation
-  private constructor() {
-    this.supabaseService = new SupabaseService();
-  }
-
-  /**
-   * Get the singleton instance of DatabaseService
-   */
-  public static getInstance(): DatabaseService {
-    if (!DatabaseService.instance) {
-      DatabaseService.instance = new DatabaseService();
+  // Constructor accepts userId for authenticated access
+  constructor(userId: string) {
+    if (!userId) {
+      throw new Error('DatabaseService requires a valid userId');
     }
-    return DatabaseService.instance;
+    this.userId = userId;
+    this.supabaseService = new SupabaseService(userId);
   }
 
   /**

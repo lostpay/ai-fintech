@@ -5,7 +5,7 @@ Quick script to train the ML model for a user
 import httpx
 import asyncio
 
-ML_URL = "http://127.0.0.1:7003"
+ML_URL = "http://192.168.1.103:7003"
 USER_ID = "default-user"
 
 async def train_model():

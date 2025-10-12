@@ -1,12 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
-import { budgetAlertService } from '../services';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { BudgetAlertService } from '../services/BudgetAlertService';
+import { BudgetCalculationService } from '../services/BudgetCalculationService';
+import { useDatabaseService } from './useDatabaseService';
 import { BudgetAlert } from '../types/BudgetAlert';
 import { onBudgetAlertsUpdated, onTransactionChanged, offBudgetAlertsUpdated, offTransactionChanged, emitBudgetAlertsUpdated } from '../utils/eventEmitter';
 
 export const useBudgetAlerts = () => {
+  const databaseService = useDatabaseService();
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Create service instances (memoized to avoid recreation)
+  const budgetCalculationService = useMemo(
+    () => new BudgetCalculationService(databaseService),
+    [databaseService]
+  );
+
+  const budgetAlertService = useMemo(
+    () => new BudgetAlertService(databaseService, budgetCalculationService),
+    [databaseService, budgetCalculationService]
+  );
 
   const loadAlerts = useCallback(async () => {
     try {
@@ -19,7 +33,7 @@ export const useBudgetAlerts = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [budgetAlertService]);
 
   const acknowledgeAlert = useCallback(async (alertId: string) => {
     try {
@@ -28,7 +42,7 @@ export const useBudgetAlerts = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to acknowledge alert');
     }
-  }, []);
+  }, [budgetAlertService]);
 
   // Listen for new budget alerts from event system
   useEffect(() => {
@@ -70,7 +84,7 @@ export const useBudgetAlerts = () => {
 
     onTransactionChanged(handleTransactionChanged);
     return () => offTransactionChanged(handleTransactionChanged);
-  }, []);
+  }, [budgetAlertService]);
 
   useEffect(() => {
     loadAlerts();

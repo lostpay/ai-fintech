@@ -9,7 +9,7 @@ import { LoadingState } from '../components/common/LoadingState';
 import { ExpenseStatistics } from '../components/history/ExpenseStatistics';
 import { TransactionWithCategory } from '../types/Transaction';
 import { Category } from '../types/Category';
-import { databaseService } from '../services';
+import { useDatabaseService } from '../hooks/useDatabaseService';
 import { useCategories } from '../hooks/useCategories';
 import { groupTransactionsByDate, TransactionGroup } from '../utils/dateFormatting';
 import { useNavigation } from '@react-navigation/native';
@@ -19,6 +19,7 @@ import { TransactionOptionsModal } from '../components/modals/TransactionOptions
 export const HistoryScreen: React.FC = () => {
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const databaseService = useDatabaseService();
   const { categories } = useCategories();
   
   const [transactions, setTransactions] = useState<TransactionWithCategory[]>([]);
@@ -34,10 +35,10 @@ export const HistoryScreen: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Initialize database if not already done
       await databaseService.initialize();
-      
+
       // Load transactions with category information
       const transactionsWithCategories = await databaseService.getTransactionsWithCategories();
       setTransactions(transactionsWithCategories);
@@ -47,7 +48,7 @@ export const HistoryScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [databaseService]);
 
   // Load transactions on component mount
   useEffect(() => {
@@ -79,7 +80,7 @@ export const HistoryScreen: React.FC = () => {
     } catch (error) {
       Alert.alert('Error', 'Failed to delete transaction');
     }
-  }, [loadTransactions]);
+  }, [databaseService, loadTransactions]);
 
   const handleSearchChange = useCallback((term: string) => {
     setSearchTerm(term);

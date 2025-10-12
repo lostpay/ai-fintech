@@ -5,12 +5,12 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { DatabaseService } from '../services/DatabaseService';
-import { 
-  ExpenseFormData, 
-  FormErrors, 
-  validateExpenseForm, 
-  hasValidationErrors 
+import { useDatabaseService } from './useDatabaseService';
+import {
+  ExpenseFormData,
+  FormErrors,
+  validateExpenseForm,
+  hasValidationErrors
 } from '../utils/formValidation';
 import { emitTransactionChanged } from '../utils/eventEmitter';
 
@@ -40,6 +40,7 @@ interface UseExpenseFormReturn {
 
 export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseFormReturn => {
   const { onSuccess, onError, isEditMode = false, transactionId } = options;
+  const databaseService = useDatabaseService();
 
   const [formData, setFormData] = useState<Partial<ExpenseFormData>>({
     date: new Date(),
@@ -47,7 +48,6 @@ export const useExpenseForm = (options: UseExpenseFormOptions = {}): UseExpenseF
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
-  const databaseService = DatabaseService.getInstance();
 
   // Run validation whenever form data changes
   useEffect(() => {

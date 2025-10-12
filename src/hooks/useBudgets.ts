@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DatabaseService } from '../services/DatabaseService';
+import { useDatabaseService } from './useDatabaseService';
 import { BudgetRolloverService } from '../services/BudgetRolloverService';
 import { Budget, CreateBudgetRequest } from '../types/Budget';
 
@@ -29,10 +29,9 @@ interface UseBudgetsReturn {
   rolloverBudgets: () => Promise<number>;
 }
 
-const databaseService = DatabaseService.getInstance();
-const rolloverService = new BudgetRolloverService(databaseService);
-
 export const useBudgets = (): UseBudgetsReturn => {
+  const databaseService = useDatabaseService();
+  const rolloverService = new BudgetRolloverService(databaseService);
   const [budgets, setBudgets] = useState<BudgetWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +46,7 @@ export const useBudgets = (): UseBudgetsReturn => {
       console.error('Failed to initialize database:', err);
       setError('Failed to initialize database');
     }
-  }, []);
+  }, [databaseService]);
 
   const rolloverBudgets = useCallback(async (): Promise<number> => {
     try {
@@ -87,7 +86,7 @@ export const useBudgets = (): UseBudgetsReturn => {
     } finally {
       setLoading(false);
     }
-  }, [initializeDatabase]);
+  }, [initializeDatabase, rolloverService, databaseService]);
 
   const refreshBudgets = useCallback(async () => {
     setLoading(true);
@@ -118,10 +117,10 @@ export const useBudgets = (): UseBudgetsReturn => {
       if (err.message?.includes('UNIQUE constraint failed')) {
         throw new Error('A budget already exists for this category and period');
       }
-      
+
       throw err;
     }
-  }, [initializeDatabase, loadBudgets]);
+  }, [initializeDatabase, loadBudgets, databaseService]);
 
   const updateBudget = useCallback(async (id: number, budgetData: Partial<CreateBudgetRequest>) => {
     try {
@@ -135,10 +134,10 @@ export const useBudgets = (): UseBudgetsReturn => {
       if (err.message?.includes('UNIQUE constraint failed')) {
         throw new Error('A budget already exists for this category and period');
       }
-      
+
       throw err;
     }
-  }, [initializeDatabase, loadBudgets]);
+  }, [initializeDatabase, loadBudgets, databaseService]);
 
   const deleteBudget = useCallback(async (id: number) => {
     try {
@@ -149,7 +148,7 @@ export const useBudgets = (): UseBudgetsReturn => {
       console.error('Failed to delete budget:', err);
       throw err;
     }
-  }, [initializeDatabase, loadBudgets]);
+  }, [initializeDatabase, loadBudgets, databaseService]);
 
   // Load budgets on hook initialization
   useEffect(() => {

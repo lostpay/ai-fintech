@@ -367,5 +367,5 @@ export class CategoryService {
   }
 }
 
-// Export singleton instance
-export const categoryService = new CategoryService(DatabaseService.getInstance());
+// Singleton instance removed - use CategoryService with useDatabaseService() hook in components
+// export const categoryService = new CategoryService(DatabaseService.getInstance());

@@ -1,7 +1,10 @@
-import { useState, useCallback } from 'react';
-import { dataExportService } from '../services';
+import { useState, useCallback, useMemo } from 'react';
+import { DataExportService } from '../services';
 import type { ExportOptions, ExportResult } from '../services';
 import { shareService } from '../services/ShareService';
+import { FileSystemService } from '../services/FileSystemService';
+import { ExportProgressService } from '../services/ExportProgressService';
+import { useDatabaseService } from './useDatabaseService';
 
 interface ExportState {
   isExporting: boolean;
@@ -11,6 +14,19 @@ interface ExportState {
 }
 
 export const useDataExport = () => {
+  // Services
+  const databaseService = useDatabaseService();
+  const dataExportService = useMemo(() => {
+    const fileSystemService = new FileSystemService();
+    const progressService = new ExportProgressService();
+    return new DataExportService(
+      databaseService,
+      fileSystemService,
+      shareService,
+      progressService
+    );
+  }, [databaseService]);
+
   const [state, setState] = useState<ExportState>({
     isExporting: false,
     progress: 0,
@@ -54,7 +70,7 @@ export const useDataExport = () => {
       }));
       throw error;
     }
-  }, []);
+  }, [dataExportService]);
 
   const shareExportedFile = useCallback(async (filePath: string) => {
     try {
@@ -102,7 +118,7 @@ export const useDataExport = () => {
         error instanceof Error ? error.message : 'Failed to get export summary'
       );
     }
-  }, []);
+  }, [dataExportService]);
 
   const validateExportOptions = useCallback((options: ExportOptions): string[] => {
     const errors: string[] = [];

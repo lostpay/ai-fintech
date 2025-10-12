@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Transaction, CreateTransactionRequest, UpdateTransactionRequest, TransactionWithCategory } from '../types/Transaction';
-import { databaseService } from '../services';
+import { useDatabaseService } from './useDatabaseService';
 
 interface UseTransactionsReturn {
   transactions: Transaction[];
@@ -25,6 +25,7 @@ interface UseTransactionsReturn {
 }
 
 export const useTransactions = (): UseTransactionsReturn => {
+  const databaseService = useDatabaseService();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export const useTransactions = (): UseTransactionsReturn => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [databaseService]);
 
   const refreshTransactions = useCallback(async () => {
     await loadTransactions();
@@ -70,7 +71,7 @@ export const useTransactions = (): UseTransactionsReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   const updateTransaction = useCallback(async (id: number, updateData: UpdateTransactionRequest): Promise<Transaction> => {
     try {
@@ -95,7 +96,7 @@ export const useTransactions = (): UseTransactionsReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   const deleteTransaction = useCallback(async (id: number): Promise<void> => {
     try {
@@ -114,7 +115,7 @@ export const useTransactions = (): UseTransactionsReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   const getTransactionsByFilter = useCallback(async (
     categoryId?: number,
@@ -142,7 +143,7 @@ export const useTransactions = (): UseTransactionsReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   const getTransactionsWithCategories = useCallback(async (
     categoryId?: number,
@@ -170,7 +171,7 @@ export const useTransactions = (): UseTransactionsReturn => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [databaseService]);
 
   // Load transactions on mount
   useEffect(() => {

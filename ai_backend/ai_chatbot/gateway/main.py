@@ -32,18 +32,36 @@ class SimpleFormatter:
         sorted_cats = sorted(categories, key=lambda x: x.get('amount', 0), reverse=True)
         top_cats = sorted_cats[:5]
 
+        # Check for data quality warning in methodology
+        methodology = data.get('methodology', {})
+        warning = methodology.get('warning', '')
+
         if lang == "zh":
             response = f"您的个性化预算建议（每月）：\n\n"
+            if warning:
+                response += f"⚠️ 注意: {warning}\n\n"
             response += f"总预算: ${total:.0f}\n\n"
             response += "主要类别：\n"
             for cat in top_cats:
-                response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
+                # Show actual spending if available
+                actual = cat.get('actual_spending')
+                if actual is not None:
+                    response += f"- {cat['category']}: ${cat['amount']:.0f} (实际支出: ${actual:.2f})\n"
+                else:
+                    response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
         else:
             response = f"Your Personalized Monthly Budget:\n\n"
+            if warning:
+                response += f"⚠️ Warning: {warning}\n\n"
             response += f"Total: ${total:.0f}\n\n"
             response += "Key Categories:\n"
             for cat in top_cats:
-                response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
+                # Show actual spending if available
+                actual = cat.get('actual_spending')
+                if actual is not None:
+                    response += f"- {cat['category']}: ${cat['amount']:.0f} (actual spending: ${actual:.2f})\n"
+                else:
+                    response += f"- {cat['category']}: ${cat['amount']:.0f}\n"
 
         return response
 
@@ -88,14 +106,16 @@ class SimpleFormatter:
                 if 'total' in row or 'sum' in row or 'amount' in row:
                     for key, value in row.items():
                         if isinstance(value, (int, float)):
-                            return f"${value:.2f}"
+                            # Convert from cents to dollars
+                            return f"${value / 100:.2f}"
                         return str(value)
 
                 # Format as key-value pairs
                 formatted_items = []
                 for key, value in row.items():
                     if isinstance(value, (int, float)) and ('amount' in key.lower() or 'total' in key.lower()):
-                        formatted_items.append(f"{key}: ${value:.2f}")
+                        # Convert from cents to dollars
+                        formatted_items.append(f"{key}: ${value / 100:.2f}")
                     else:
                         formatted_items.append(f"{key}: {value}")
                 return "\n".join(formatted_items)
@@ -110,7 +130,8 @@ class SimpleFormatter:
                     desc = row.get('description', '')
                     amount = row.get('amount', 0)
                     date = row.get('date', '')
-                    formatted_rows.append(f"{i}. {desc}: ${amount} ({date})")
+                    # Convert from cents to dollars
+                    formatted_rows.append(f"{i}. {desc}: ${amount / 100:.2f} ({date})")
                 else:
                     formatted_rows.append(f"{i}. {row}")
 
@@ -123,11 +144,55 @@ class SimpleFormatter:
 
 formatter = SimpleFormatter()
 
+def clean_response_text(text: str) -> str:
+    """
+    Remove SQL queries, JSON structures, and technical data from LLM responses.
+    Only keeps natural language text for user-friendly display.
+    """
+    import re
+
+    # Remove SQL queries (SELECT, INSERT, UPDATE, DELETE, etc.)
+    text = re.sub(r'(?i)\b(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b.*?;', '', text, flags=re.DOTALL)
+
+    # Remove code blocks (```sql, ```json, etc.)
+    text = re.sub(r'```[\w]*\n.*?\n```', '', text, flags=re.DOTALL)
+
+    # Remove standalone JSON objects that look like raw data dumps
+    # Pattern: { followed by multiple "key": value pairs with technical keys
+    json_pattern = r'\{[^}]*(?:"(?:categories|amount|floor|elasticity|activity_level|adjustment_factor|confidence|predicted_amount|lower_bound|upper_bound|columns|rows|data)"\s*:)[^}]*\}'
+    text = re.sub(json_pattern, '', text, flags=re.DOTALL)
+
+    # Remove large JSON arrays with multiple objects
+    text = re.sub(r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]', '', text, flags=re.DOTALL)
+
+    # Remove SQL-style result tables (rows of pipe-separated values)
+    text = re.sub(r'(?:\|[^\n]+\|[\n\r])+', '', text)
+
+    # Remove lines that look like JSON key-value pairs
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        # Skip lines that are mostly JSON-like (multiple quotes and colons)
+        if line.count('"') > 3 and line.count(':') > 2:
+            continue
+        # Skip lines with technical field names
+        if any(field in line for field in ['elasticity', 'adjustment_factor', 'activity_level', 'lower_bound', 'upper_bound']):
+            continue
+        cleaned_lines.append(line)
+
+    text = '\n'.join(cleaned_lines)
+
+    # Clean up extra whitespace and newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = text.strip()
+
+    return text
+
 # Service URLs from environment variables
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/v1")
-TEXT2SQL_URL = os.getenv("TEXT2SQL_URL", "http://127.0.0.1:7001")
-RAG_URL = os.getenv("RAG_URL", "http://127.0.0.1:7002")
-ML_URL = os.getenv("ML_URL", "http://127.0.0.1:7003")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://192.168.1.103:11434/v1")
+TEXT2SQL_URL = os.getenv("TEXT2SQL_URL", "http://192.168.1.103:7001")
+RAG_URL = os.getenv("RAG_URL", "http://192.168.1.103:7002")
+ML_URL = os.getenv("ML_URL", "http://192.168.1.103:7003")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:7b")
 
 app = FastAPI(
@@ -497,6 +562,7 @@ async def call_ml_service(analysis_type: str, user_id: str, timeframe: str = Non
     """Call ML service for predictions, budgets, patterns, or overspending analysis"""
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
+            logger.info(f"Calling ML service '{analysis_type}' for user_id: '{user_id}'")
             if analysis_type == "predict":
                 payload = {"user_id": user_id, "timeframe": timeframe or "weekly", "horizon": horizon}
                 resp = await client.post(f"{ML_URL}/predict", json=payload)
@@ -609,7 +675,7 @@ async def chat(request: ChatRequest):
     4. Return formatted response to user
     """
     try:
-        logger.info(f"Chat request from user {request.user_id}: {request.message}")
+        logger.info(f"Chat request from user '{request.user_id}' (lang: {request.lang}): {request.message}")
 
         system_prompt = get_system_prompt(request.lang)
 
@@ -633,8 +699,16 @@ async def chat(request: ChatRequest):
             formatted_results = []
             for r in tool_results:
                 try:
+                    # Format SQL results using the formatter (convert to natural language)
+                    if r['tool'] == 'query_expenses' and 'result' in r:
+                        sql_result = r['result']
+                        if not sql_result.get('error'):
+                            formatted = formatter.format_sql_result(sql_result, request.lang)
+                            formatted_results.append(f"Tool: {r['tool']}\nResult: {formatted}")
+                        else:
+                            formatted_results.append(f"Tool: {r['tool']}\nResult: Error retrieving data")
                     # Format ML results using the formatter
-                    if r['tool'] == 'ml_analysis' and 'result' in r and not r.get('result', {}).get('error'):
+                    elif r['tool'] == 'ml_analysis' and 'result' in r and not r.get('result', {}).get('error'):
                         ml_result = r['result']
                         if 'categories' in ml_result and 'total_budget' in ml_result:
                             formatted = formatter.format_budget(ml_result, request.lang)
@@ -658,10 +732,11 @@ async def chat(request: ChatRequest):
 Tool results:
 {tool_context}
 
-Please provide a natural, conversational answer based on the tool results.
-If the results are already well-formatted, use them as-is.
-Don't include technical details like 'elasticity factors' or 'adjustment factors'.
-Focus on the key information the user needs."""
+IMPORTANT: Provide a natural answer using EXACTLY the data from the tool results.
+- Do NOT change, interpret, or "improve" transaction descriptions, names, or labels
+- Do NOT guess what abbreviations might mean - use them exactly as provided
+- Do NOT add technical details like 'elasticity factors' or 'adjustment factors'
+- Use the exact amounts, dates, and descriptions from the results"""
 
             final_response = await call_ollama(
                 final_prompt,
@@ -670,23 +745,29 @@ Focus on the key information the user needs."""
 
             response_text = final_response["choices"][0]["message"].get("content", "")
 
-            # Prepare embedded data for response (excluding SQL results)
+            # Clean response to remove SQL/JSON output
+            response_text = clean_response_text(response_text)
+
+            # Prepare embedded data for response (excluding SQL results and create_data)
             embedded_data = None
             sources = None
 
             for result in tool_results:
                 if result["tool"] == "query_expenses":
+                    # Don't send SQL data to frontend
+                    continue
+                elif result["tool"] == "create_data":
+                    # Don't send create_data JSON to frontend - natural language response is sufficient
                     continue
                 elif result["tool"] == "search_docs" and "sources" in result.get("result", {}):
                     sources = result["result"]["sources"]
                 elif result["tool"] == "ml_analysis" and "result" in result:
                     ml_result = result["result"]
-                    if "predictions" in ml_result or "categories" in ml_result or "recurrences" in ml_result:
+                    # Only send predictions and patterns as embedded data
+                    # Budget data is already formatted as text, so don't send raw JSON
+                    if "predictions" in ml_result or "recurrences" in ml_result:
                         embedded_data = ml_result
-                elif result["tool"] == "create_data" and "result" in result:
-                    create_result = result["result"]
-                    if create_result.get("success"):
-                        embedded_data = create_result
+                    # Skip categories (budgets) - they're already formatted as natural language
 
             return ChatResponse(
                 text=response_text,
@@ -697,6 +778,10 @@ Focus on the key information the user needs."""
         else:
             # Direct response without tools
             response_text = llm_response["choices"][0]["message"].get("content", "")
+
+            # Clean response to remove SQL/JSON output
+            response_text = clean_response_text(response_text)
+
             return ChatResponse(
                 text=response_text,
                 confidence=0.95

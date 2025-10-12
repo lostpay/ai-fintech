@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
+import { useAuth } from '../context/AuthContext';
 
 // Simple message type
 interface Message {
@@ -28,10 +29,11 @@ interface Message {
 // Get the chatbot URL from environment
 const CHATBOT_URL = Constants.expoConfig?.extra?.chatbotApiUrl ||
                    process.env.EXPO_PUBLIC_CHATBOT_API_URL ||
-                   'http://192.168.1.102:7000';
+                   'http://192.168.1.103:7000';
 
 export default function SimpleChatScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -94,14 +96,17 @@ export default function SimpleChatScreen() {
     setIsLoading(true);
 
     try {
-      console.log('Sending message to:', `${CHATBOT_URL}/chat`);
+      // Use authenticated user's ID, fallback to 'default-user' if not logged in
+      const userId = user?.id || 'default-user';
+      console.log('Sending message to:', `${CHATBOT_URL}/chat`, 'for user:', userId);
+
       const response = await fetch(`${CHATBOT_URL}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: 'default-user',
+          user_id: userId,
           message: userMessage.text,
           lang: 'en',
           session_id: 'mobile-session-' + Date.now(),

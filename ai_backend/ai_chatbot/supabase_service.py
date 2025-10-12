@@ -17,9 +17,6 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Default user ID for single-user mode (before authentication)
-DEFAULT_USER_ID = "default-user"
-
 @dataclass
 class Transaction:
     """Transaction data model matching Supabase schema"""
@@ -85,13 +82,18 @@ class SupabaseService:
     Maintains compatibility with original SQLite service interface.
     """
 
-    def __init__(self, user_id: str = DEFAULT_USER_ID):
+    def __init__(self, user_id: str):
         """
         Initialize Supabase connection for specific user.
 
         Args:
-            user_id: User identifier for data filtering (default: "default-user")
+            user_id: User identifier for data filtering (required)
+
+        Raises:
+            ValueError: If user_id is empty or None
         """
+        if not user_id:
+            raise ValueError("SupabaseService requires a valid user_id")
         self.user_id = user_id
         self.client: Optional[Client] = None
         self._connect()

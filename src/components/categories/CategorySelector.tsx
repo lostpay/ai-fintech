@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, TouchableOpacity, StyleSheet, ScrollView, Modal } from 'react-native';
 import { Text, Searchbar, List, useTheme, Portal, Surface } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Category } from '../../types/Category';
-import { categoryService } from '../../services/CategoryService';
+import { CategoryService } from '../../services/CategoryService';
+import { useDatabaseService } from '../../hooks/useDatabaseService';
 import { CategoryIcon } from './CategoryIcon';
 
 interface CategorySelectorProps {
@@ -28,6 +29,14 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
   testID = 'category-selector'
 }) => {
   const theme = useTheme();
+
+  // Services
+  const databaseService = useDatabaseService();
+  const categoryService = useMemo(
+    () => new CategoryService(databaseService),
+    [databaseService]
+  );
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [filteredCategories, setFilteredCategories] = useState<Category[]>([]);
   const [visible, setVisible] = useState(false);
@@ -38,14 +47,14 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
   /**
    * Load categories from service
    */
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       const allCategories = await categoryService.getCategories();
       setCategories(allCategories);
     } catch (error) {
       console.error('Failed to load categories:', error);
     }
-  };
+  }, [categoryService]);
 
   /**
    * Filter categories based on search and visibility settings
@@ -81,7 +90,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
    */
   useEffect(() => {
     loadCategories();
-  }, []);
+  }, [loadCategories]);
 
   /**
    * Filter categories based on search query

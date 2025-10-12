@@ -28,7 +28,7 @@ import {
   ValidationError,
   isAppError
 } from '../../services/ErrorHandlingService';
-import { DatabaseService } from '../../services/DatabaseService';
+import { useDatabaseService } from '../../hooks/useDatabaseService';
 import { Category } from '../../types/Category';
 
 interface TransactionFormProps {
@@ -59,13 +59,13 @@ interface ValidationState {
   isValid: boolean;
 }
 
-const TransactionForm: React.FC<TransactionFormProps> = ({ 
-  onSubmit, 
+const TransactionForm: React.FC<TransactionFormProps> = ({
+  onSubmit,
   initialData,
   submitButtonText = 'Save Expense'
 }) => {
   // Services
-  const databaseService = DatabaseService.getInstance();
+  const databaseService = useDatabaseService();
   
   // Form state
   const [formData, setFormData] = useState<FormData>({
@@ -104,7 +104,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     };
 
     initializeForm();
-  }, []);
+  }, [databaseService]);
 
   // Validate form data against business rules and constraints
   const performValidation = useCallback(async (data: FormData) => {

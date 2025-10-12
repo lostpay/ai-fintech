@@ -16,7 +16,7 @@ async def clear_cache():
         try:
             # Send cache clear request to ML service
             response = await client.post(
-                "http://127.0.0.1:7003/clear-cache",
+                "http://192.168.1.103:7003/clear-cache",
                 params={"user_id": "default-user"}
             )
 
